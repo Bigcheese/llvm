@@ -35,6 +35,9 @@ using namespace llvm;
 
 namespace {
 class WinCOFFStreamer : public MCObjectStreamer {
+  void EmitInstToFragment(const MCInst &Inst);
+  void EmitInstToData(const MCInst &Inst);
+
 public:
   MCSymbol const *CurSymbol;
 
@@ -361,20 +364,67 @@ void WinCOFFStreamer::EmitFileDirective(StringRef Filename) {
   // info will be a much large effort.
 }
 
-void WinCOFFStreamer::EmitInstruction(const MCInst &Instruction) {
-  for (unsigned i = 0, e = Instruction.getNumOperands(); i != e; ++i)
-    if (Instruction.getOperand(i).isExpr())
-      AddValueSymbols(Instruction.getOperand(i).getExpr());
+void WinCOFFStreamer::EmitInstToFragment(const MCInst &Inst) {
+  MCInstFragment *IF = new MCInstFragment(Inst, getCurrentSectionData());
+
+  // Add the fixups and data.
+  //
+  // FIXME: Revisit this design decision when relaxation is done, we may be
+  // able to get away with not storing any extra data in the MCInst.
+  SmallVector<MCFixup, 4> Fixups;
+  SmallString<256> Code;
+  raw_svector_ostream VecOS(Code);
+  getAssembler().getEmitter().EncodeInstruction(Inst, VecOS, Fixups);
+  VecOS.flush();
+
+  IF->getCode() = Code;
+  IF->getFixups() = Fixups;
+}
+
+void WinCOFFStreamer::EmitInstToData(const MCInst &Inst) {
+  MCDataFragment *DF = getOrCreateDataFragment();
+
+  SmallVector<MCFixup, 4> Fixups;
+  SmallString<256> Code;
+  raw_svector_ostream VecOS(Code);
+  getAssembler().getEmitter().EncodeInstruction(Inst, VecOS, Fixups);
+  VecOS.flush();
+
+  // Add the fixups and data.
+  for (unsigned i = 0, e = Fixups.size(); i != e; ++i) {
+    Fixups[i].setOffset(Fixups[i].getOffset() + DF->getContents().size());
+    DF->addFixup(Fixups[i]);
+  }
+  DF->getContents().append(Code.begin(), Code.end());
+}
+
+void WinCOFFStreamer::EmitInstruction(const MCInst &Inst) {
+  // Scan for values.
+  for (unsigned i = Inst.getNumOperands(); i--; )
+    if (Inst.getOperand(i).isExpr())
+      AddValueSymbols(Inst.getOperand(i).getExpr());
 
   getCurrentSectionData()->setHasInstructions(true);
 
-  MCInstFragment *Fragment =
-    new MCInstFragment(Instruction, getCurrentSectionData());
+  // If this instruction doesn't need relaxation, just emit it as data.
+  if (!getAssembler().getBackend().MayNeedRelaxation(Inst)) {
+    EmitInstToData(Inst);
+    return;
+  }
 
-  raw_svector_ostream VecOS(Fragment->getCode());
+  // Otherwise, if we are relaxing everything, relax the instruction as much as
+  // possible and emit it as data.
+  if (getAssembler().getRelaxAll()) {
+    MCInst Relaxed;
+    getAssembler().getBackend().RelaxInstruction(Inst, Relaxed);
+    while (getAssembler().getBackend().MayNeedRelaxation(Relaxed))
+      getAssembler().getBackend().RelaxInstruction(Relaxed, Relaxed);
+    EmitInstToData(Relaxed);
+    return;
+  }
 
-  getAssembler().getEmitter().EncodeInstruction(Instruction, VecOS,
-                                                Fragment->getFixups());
+  // Otherwise emit to a separate fragment.
+  EmitInstToFragment(Inst);
 }
 
 void WinCOFFStreamer::Finish() {
