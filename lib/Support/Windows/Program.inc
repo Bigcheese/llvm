@@ -253,13 +253,13 @@ Program::Execute(const Path& path,
 
     si.hStdInput = RedirectIO(redirects[0], 0, ErrMsg);
     if (si.hStdInput == INVALID_HANDLE_VALUE) {
-      MakeErrMsg(ErrMsg, "can't redirect stdin");
+      MakeErrMsg(ErrMsg, "can't redirect stdin: ");
       return false;
     }
     si.hStdOutput = RedirectIO(redirects[1], 1, ErrMsg);
     if (si.hStdOutput == INVALID_HANDLE_VALUE) {
       CloseHandle(si.hStdInput);
-      MakeErrMsg(ErrMsg, "can't redirect stdout");
+      MakeErrMsg(ErrMsg, "can't redirect stdout: ");
       return false;
     }
     if (redirects[1] && redirects[2] && *(redirects[1]) == *(redirects[2])) {
@@ -274,7 +274,7 @@ Program::Execute(const Path& path,
       if (si.hStdError == INVALID_HANDLE_VALUE) {
         CloseHandle(si.hStdInput);
         CloseHandle(si.hStdOutput);
-        MakeErrMsg(ErrMsg, "can't redirect stderr");
+        MakeErrMsg(ErrMsg, "can't redirect stderr: ");
         return false;
       }
     }
