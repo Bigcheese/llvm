@@ -19,6 +19,7 @@
 #include "llvm/Support/FileUtilities.h"
 #include "llvm/Support/SystemUtils.h"
 #include "llvm/Support/raw_ostream.h"
+#include "llvm/System/Host.h"
 #include <fstream>
 
 using namespace llvm;
@@ -78,7 +79,7 @@ namespace {
       cl::init(false));
 
   cl::opt<std::string>
-  InputFile("input", cl::init("/dev/null"),
+  InputFile("input", cl::init(sys::getHostNullDevicePath()),
             cl::desc("Filename to pipe in as stdin (default: /dev/null)"));
 
   cl::list<std::string>
