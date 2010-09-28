@@ -94,3 +94,7 @@ std::string sys::getHostTriple() {
 
   return Triple;
 }
+
+StringRef sys::getHostNullDevicePath() {
+  return "/dev/null";
+}

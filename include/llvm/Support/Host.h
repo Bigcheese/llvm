@@ -15,6 +15,7 @@
 #define LLVM_SYSTEM_HOST_H
 
 #include "llvm/ADT/StringMap.h"
+#include "llvm/ADT/StringRef.h"
 #include <string>
 
 namespace llvm {
@@ -60,6 +61,8 @@ namespace sys {
   ///
   /// \return - True on success.
   bool getHostCPUFeatures(StringMap<bool> &Features);
+
+  StringRef getHostNullDevicePath();
 }
 }
 

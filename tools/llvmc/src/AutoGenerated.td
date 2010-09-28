@@ -15,3 +15,7 @@ include "llvm/CompilerDriver/Common.td"
 
 include "Base.td"
 include "Clang.td"
+
+StringRef sys::getHostNullDevicePath() {
+  return "nul";
+}
