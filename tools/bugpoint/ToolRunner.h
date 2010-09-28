@@ -77,6 +77,14 @@ public:
                        std::string &OutputFile,
                        const std::vector<std::string> &ArgsForGCC,
                        std::string &Error);
+
+  /// MakeExecutable - This compiles the specified file (which is either a .c
+  /// file, a .s file, or a .o file) into an executable. The path is stored in
+  /// OutFile on return.
+  int MakeExecutable(const std::string &InputFile,
+                     GCC::FileType FileKind,
+                     sys::Path &OutFile,
+                     std::string &Error);
 };
 
 
@@ -95,7 +103,8 @@ public:
                         const std::string              &GCCBinary,
                         const std::vector<std::string> *Args = 0,
                         const std::vector<std::string> *GCCArgs = 0,
-                        bool UseIntegratedAssembler = false);
+                        bool UseIntegratedAssembler = false,
+                        bool LinkIntegratedAssembler = false);
 
   static AbstractInterpreter* createLLI(const char *Argv0, std::string &Message,
                                         const std::vector<std::string> *Args=0);
@@ -198,12 +207,15 @@ class LLC : public AbstractInterpreter {
   std::vector<std::string> ToolArgs; // Extra args to pass to LLC.
   GCC *gcc;
   bool UseIntegratedAssembler;
+  bool LinkIntegratedAssemblerOutput;
 public:
   LLC(const std::string &llcPath, GCC *Gcc,
       const std::vector<std::string> *Args,
-      bool useIntegratedAssembler)
+      bool useIntegratedAssembler,
+      bool linkIntegratedAssemblerOutput)
     : LLCPath(llcPath), gcc(Gcc),
-      UseIntegratedAssembler(useIntegratedAssembler) {
+      UseIntegratedAssembler(useIntegratedAssembler),
+      LinkIntegratedAssemblerOutput(linkIntegratedAssemblerOutput){
     ToolArgs.clear();
     if (Args) ToolArgs = *Args;
   }
