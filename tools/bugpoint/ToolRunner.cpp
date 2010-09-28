@@ -402,8 +402,16 @@ GCC::FileType LLC::OutputCode(const std::string &Bitcode,
 void LLC::compileProgram(const std::string &Bitcode, std::string *Error,
                          unsigned Timeout, unsigned MemoryLimit) {
   sys::Path OutputAsmFile;
-  OutputCode(Bitcode, OutputAsmFile, *Error, Timeout, MemoryLimit);
-  OutputAsmFile.eraseFromDisk();
+  GCC::FileType FileKind =  OutputCode(Bitcode, OutputAsmFile, *Error, Timeout,
+                                       MemoryLimit);
+  FileRemover OutFileRemover(OutputAsmFile, !SaveTemps);
+  if (UseIntegratedAssembler && LinkIntegratedAssemblerOutput) {
+    // Also try and link the resulting object file.
+    sys::Path OutputExecutableFile;
+    gcc->MakeExecutable(OutputAsmFile.str(), FileKind, OutputExecutableFile,
+                     *Error);
+    FileRemover OutFileRemover(OutputExecutableFile, !SaveTemps);
+  }
 }
 
 int LLC::ExecuteProgram(const std::string &Bitcode,
@@ -419,7 +427,7 @@ int LLC::ExecuteProgram(const std::string &Bitcode,
   sys::Path OutputAsmFile;
   GCC::FileType FileKind = OutputCode(Bitcode, OutputAsmFile, *Error, Timeout,
                                       MemoryLimit);
-  FileRemover OutFileRemover(OutputAsmFile, !SaveTemps);
+
 
   std::vector<std::string> GCCArgs(ArgsForGCC);
   GCCArgs.insert(GCCArgs.end(), SharedLibs.begin(), SharedLibs.end());
@@ -437,7 +445,8 @@ LLC *AbstractInterpreter::createLLC(const char *Argv0,
                                     const std::string &GCCBinary,
                                     const std::vector<std::string> *Args,
                                     const std::vector<std::string> *GCCArgs,
-                                    bool UseIntegratedAssembler) {
+                                    bool UseIntegratedAssembler,
+                                    bool LinkIntegratedAssemblerOutput) {
   std::string LLCPath =
     PrependMainExecutablePath("llc", Argv0, (void *)(intptr_t)&createLLC).str();
   if (LLCPath.empty()) {
@@ -451,7 +460,8 @@ LLC *AbstractInterpreter::createLLC(const char *Argv0,
     errs() << Message << "\n";
     exit(1);
   }
-  return new LLC(LLCPath, gcc, Args, UseIntegratedAssembler);
+  return new LLC(LLCPath, gcc, Args, UseIntegratedAssembler,
+                 LinkIntegratedAssemblerOutput);
 }
 
 //===---------------------------------------------------------------------===//
@@ -859,6 +869,84 @@ int GCC::MakeSharedObject(const std::string &InputFile, FileType fileType,
         );
   if (RunProgramWithTimeout(GCCPath, &GCCArgs[0], sys::Path(), sys::Path(),
                             sys::Path())) {
+    Error = ProcessFailure(GCCPath, &GCCArgs[0]);
+    return 1;
+  }
+  return 0;
+}
+
+int GCC::MakeExecutable(const std::string &InputFile,
+                        GCC::FileType FileKind,
+                        sys::Path &OutputFile,
+                        std::string &Error) {
+  sys::Path uniqueFilename(InputFile);
+  std::string ErrMsg;
+  if (uniqueFilename.makeUnique(true, &ErrMsg)) {
+    errs() << "Error making unique filename: " << ErrMsg << "\n";
+    exit(1);
+  }
+  OutputFile = uniqueFilename.str();
+
+  std::vector<const char*> GCCArgs;
+
+  GCCArgs.push_back(GCCPath.c_str());
+
+  if (TargetTriple.getArch() == Triple::x86)
+    GCCArgs.push_back("-m32");
+
+  for (std::vector<std::string>::const_iterator
+         I = gccArgs.begin(), E = gccArgs.end(); I != E; ++I)
+    GCCArgs.push_back(I->c_str());
+
+  // Compile the C/asm file into a shared object
+  if (FileKind != ObjectFile) {
+    GCCArgs.push_back("-x");
+    GCCArgs.push_back(FileKind == AsmFile ? "assembler" : "c");
+  }
+  GCCArgs.push_back("-fno-strict-aliasing");
+  GCCArgs.push_back(InputFile.c_str());   // Specify the input filename.
+  GCCArgs.push_back("-x");
+  GCCArgs.push_back("none");
+
+  if (TargetTriple.getArch() == Triple::sparc)
+    GCCArgs.push_back("-mcpu=v9");
+
+  GCCArgs.push_back("-o");
+  GCCArgs.push_back(OutputFile.c_str()); // Output to the right filename.
+  GCCArgs.push_back("-O2");              // Optimize the program a bit.
+
+  GCCArgs.push_back(0);                    // NULL terminator
+
+  outs() << "<gcc>"; outs().flush();
+  DEBUG(errs() << "\nAbout to run:\t";
+        for (unsigned i = 0, e = GCCArgs.size()-1; i != e; ++i)
+          errs() << " " << GCCArgs[i];
+        errs() << "\n";
+        );
+
+
+  sys::Path ErrorFilename("bugpoint.program_error_messages");
+  FileRemover ErrorFileRemover(ErrorFilename, !SaveTemps);
+  std::string UniqueErrMsg;
+  if (ErrorFilename.makeUnique(true, &UniqueErrMsg)) {
+    errs() << "Error making unique filename: " << UniqueErrMsg << "\n";
+    exit(1);
+  }
+
+  if (RunProgramWithTimeout(GCCPath, &GCCArgs[0], sys::Path(), ErrorFilename,
+                            ErrorFilename)) {
+    std::ifstream ErrorFile(ErrorFilename.c_str());
+    std::ostringstream OS;
+    if (ErrorFile) {
+      std::copy(std::istreambuf_iterator<char>(ErrorFile),
+                std::istreambuf_iterator<char>(),
+                std::ostreambuf_iterator<char>(OS));
+      ErrorFile.close();
+    }
+    if (OS.str().find("LNK1143") == std::string::npos) {
+      Error.clear();
+      return 0;
+    }
     Error = ProcessFailure(GCCPath, &GCCArgs[0]);
     return 1;
   }

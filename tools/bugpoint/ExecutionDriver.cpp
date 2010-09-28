@@ -95,6 +95,11 @@ namespace {
   CustomExecCommand("exec-command", cl::init("simulate"),
       cl::desc("Command to execute the bitcode (use with -run-custom) "
                "(default: simulate)"));
+
+  cl::opt<bool>
+  LLCIALink("llc-ia-link", cl::init(false),
+    cl::desc("Attempt to link the output of the integrated assembler "
+             "(default: false)"));
 }
 
 namespace llvm {
@@ -158,8 +163,10 @@ bool BugDriver::initializeExecutionEnvironment() {
     if (!Interpreter) {
       InterpreterSel = RunLLC;
       Interpreter = AbstractInterpreter::createLLC(getToolName(), Message,
-                                                   GCCBinary, &ToolArgv, 
-                                                   &GCCToolArgv);
+                                                   GCCBinary, &ToolArgv,
+                                                   &GCCToolArgv,
+                                                   false,
+                                                   LLCIALink);
     }
     if (!Interpreter) {
       InterpreterSel = RunLLI;
@@ -179,9 +186,10 @@ bool BugDriver::initializeExecutionEnvironment() {
   case RunLLCIA:
   case LLC_Safe:
     Interpreter = AbstractInterpreter::createLLC(getToolName(), Message,
-                                                 GCCBinary, &ToolArgv, 
+                                                 GCCBinary, &ToolArgv,
                                                  &GCCToolArgv,
-                                                 InterpreterSel == RunLLCIA);
+                                                 InterpreterSel == RunLLCIA,
+                                                 LLCIALink);
     break;
   case RunJIT:
     Interpreter = AbstractInterpreter::createJIT(getToolName(), Message,
@@ -217,9 +225,11 @@ bool BugDriver::initializeExecutionEnvironment() {
       SafeInterpreterSel = RunLLC;
       SafeToolArgs.push_back("--relocation-model=pic");
       SafeInterpreter = AbstractInterpreter::createLLC(Path.c_str(), Message,
-                                                       GCCBinary, 
+                                                       GCCBinary,
                                                        &SafeToolArgs,
-                                                       &GCCToolArgv);
+                                                       &GCCToolArgv,
+                                                       false,
+                                                       LLCIALink);
     }
 
     // In "llc-safe" mode, default to using LLC as the "safe" backend.
@@ -228,9 +238,11 @@ bool BugDriver::initializeExecutionEnvironment() {
       SafeInterpreterSel = RunLLC;
       SafeToolArgs.push_back("--relocation-model=pic");
       SafeInterpreter = AbstractInterpreter::createLLC(Path.c_str(), Message,
-                                                       GCCBinary, 
+                                                       GCCBinary,
                                                        &SafeToolArgs,
-                                                       &GCCToolArgv);
+                                                       &GCCToolArgv,
+                                                       false,
+                                                       LLCIALink);
     }
 
     // Pick a backend that's different from the test backend. The JIT and
@@ -250,9 +262,11 @@ bool BugDriver::initializeExecutionEnvironment() {
       SafeInterpreterSel = RunLLC;
       SafeToolArgs.push_back("--relocation-model=pic");
       SafeInterpreter = AbstractInterpreter::createLLC(Path.c_str(), Message,
-                                                       GCCBinary, 
+                                                       GCCBinary,
                                                        &SafeToolArgs,
-                                                       &GCCToolArgv);
+                                                       &GCCToolArgv,
+                                                       false,
+                                                       LLCIALink);
     }
     if (!SafeInterpreter) {
       SafeInterpreterSel = AutoPick;
@@ -265,7 +279,8 @@ bool BugDriver::initializeExecutionEnvironment() {
     SafeInterpreter = AbstractInterpreter::createLLC(Path.c_str(), Message,
                                                      GCCBinary, &SafeToolArgs,
                                                      &GCCToolArgv,
-                                                SafeInterpreterSel == RunLLCIA);
+                                                SafeInterpreterSel == RunLLCIA,
+                                                     LLCIALink);
     break;
   case RunCBE:
     SafeInterpreter = AbstractInterpreter::createCBE(Path.c_str(), Message,
