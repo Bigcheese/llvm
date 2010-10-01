@@ -35,7 +35,7 @@ class LLVMContext;
 
 class DebugCrashes;
 
-class GCC;
+class CCompiler;
 
 extern bool DisableSimplifyCFG;
 
@@ -51,7 +51,7 @@ class BugDriver {
   std::vector<std::string> PassesToRun;
   AbstractInterpreter *Interpreter;   // How to run the program
   AbstractInterpreter *SafeInterpreter;  // To generate reference output, etc.
-  GCC *gcc;
+  CCompiler *Compiler;
   bool run_find_bugs;
   unsigned Timeout;
   unsigned MemoryLimit;
@@ -186,7 +186,7 @@ public:
                                    std::string *Error) const;
 
   /// createReferenceFile - calls compileProgram and then records the output
-  /// into ReferenceOutputFile. Returns true if reference file created, false 
+  /// into ReferenceOutputFile. Returns true if reference file created, false
   /// otherwise. Note: initializeExecutionEnvironment should be called BEFORE
   /// this function.
   ///
@@ -260,12 +260,12 @@ public:
                  std::string &OutputFilename, bool DeleteOutput = false,
                  bool Quiet = false, unsigned NumExtraArgs = 0,
                  const char * const *ExtraArgs = NULL) const;
-                 
-  /// runManyPasses - Take the specified pass list and create different 
+
+  /// runManyPasses - Take the specified pass list and create different
   /// combinations of passes to compile the program with. Compile the program with
-  /// each set and mark test to see if it compiled correctly. If the passes 
+  /// each set and mark test to see if it compiled correctly. If the passes
   /// compiled correctly output nothing and rearrange the passes into a new order.
-  /// If the passes did not compile correctly, output the command required to 
+  /// If the passes did not compile correctly, output the command required to
   /// recreate the failure. This returns true if a compiler error is found.
   ///
   bool runManyPasses(const std::vector<std::string> &AllPasses,

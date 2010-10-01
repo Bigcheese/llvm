@@ -43,8 +43,13 @@ struct CompilerArgument {
       C,
       Executable,
       Object,
-      SharedObject,
+      SharedObject
     };
+
+    _ v_;
+
+    FileType(_ v) : v_(v) {}
+    operator int() const {return v_;}
   };
 
   struct /* enum class */ ArgumentType {
@@ -55,6 +60,11 @@ struct CompilerArgument {
       OutputFileType,
       OutputFilePath  ///< Path to output file. (gcc: -o)
     };
+
+    _ v_;
+
+    ArgumentType(_ v) : v_(v) {}
+    operator int() const {return v_;}
   };
 
   ArgumentType ArgType;
@@ -74,6 +84,14 @@ public:
     MicrosoftC
   };
 
+  // Single place to define which compiler to use. If we were built with MSVC,
+  // use cl.exe, otherwise use gcc.
+# if defined(_MSC_VER) && !defined(__clang__)
+  static const Compilers DefaultCompiler = MicrosoftC;
+# else
+  static const Compilers DefaultCompiler = GCCCompatible;
+#endif
+
   // Typedefs.
   typedef SmallVectorImpl<CompilerArgument> ArgumentList;
   typedef SmallVectorImpl<StringRef>    UserArgumentList;
@@ -82,18 +100,17 @@ public:
   virtual ~CCompiler();
 
   /// @param CompilerType The compiler in enum Compilers to create.
+  /// @param Error TODO
   /// @param ExecutablePath The path to the executable to use to compile. This
   ///        must be compatable with the CompilerType (don't pass gcc as cl.exe)
-  /// @param Args Compiler independent default arguments. These are used for all
-  ///        invocations.
   /// @param UserArgs Compiler specific arguments passed by the user on the
   ///        command line. These are used for all invocations.
   ///
-  /// @return A pointer to the compiler.
-  static CCompiler* createCCompiler(Compilers CompilerType,
-                                    const sys::Path &ExecutablePath,
-                                    const ArgumentList &Args,
-                                    const UserArgumentList &UserArgs);
+  /// @return A pointer to the compiler, or NULL on error.
+  static CCompiler* create(Compilers CompilerType,
+                           std::string &Error,
+                           const sys::Path &ExecutablePath,
+                           const UserArgumentList &UserArgs);
 
   /// @name Abstract CCompiler Interface
   /// @{
@@ -198,8 +215,6 @@ public:
                         const sys::Path                &CompilerBinary,
                         const std::vector<std::string> *Args = 0,
                         const std::vector<std::string> *GCCArgs = 0,
-                        bool UseIntegratedAssembler = false,
-                        bool LinkIntegratedAssembler = false);
                         bool UseIntegratedAssembler = false);
 
   static AbstractInterpreter* createLLI(const char *Argv0, std::string &Message,
@@ -224,10 +239,11 @@ public:
   /// understood by the GCC driver (either C or asm).  If the code generator
   /// fails, it sets Error, otherwise, this function returns the type of code
   /// emitted.
-  virtual GCC::FileType OutputCode(const std::string &Bitcode,
-                                   sys::Path &OutFile, std::string &Error,
-                                   unsigned Timeout = 0,
-                                   unsigned MemoryLimit = 0) {
+  virtual CompilerArgument::FileType OutputCode(const std::string &Bitcode,
+                                                   sys::Path &OutFile,
+                                                   std::string &Error,
+                                                   unsigned Timeout = 0,
+                                                   unsigned MemoryLimit = 0) {
     Error = "OutputCode not supported by this AbstractInterpreter!";
     return CompilerArgument::FileType::Invalid;
   }
@@ -288,7 +304,7 @@ public:
   /// understood by the GCC driver (either C or asm).  If the code generator
   /// fails, it sets Error, otherwise, this function returns the type of code
   /// emitted.
-  virtual CompilerArgument::FileType::_ OutputCode(const std::string &Bitcode,
+  virtual CompilerArgument::FileType OutputCode(const std::string &Bitcode,
                                                    sys::Path &OutFile,
                                                    std::string &Error,
                                                    unsigned Timeout = 0,
@@ -338,7 +354,7 @@ public:
   /// understood by the GCC driver (either C or asm).  If the code generator
   /// fails, it sets Error, otherwise, this function returns the type of code
   /// emitted.
-  virtual CompilerArgument::FileType::_  OutputCode(const std::string &Bitcode,
+  virtual CompilerArgument::FileType  OutputCode(const std::string &Bitcode,
                                                     sys::Path &OutFile,
                                                     std::string &Error,
                                                     unsigned Timeout = 0,

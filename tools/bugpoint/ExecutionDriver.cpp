@@ -88,7 +88,7 @@ namespace {
                          "into executing programs"));
 
   cl::list<std::string>
-  AdditionalLinkerArgs("Xlinker", 
+  AdditionalLinkerArgs("Xlinker",
       cl::desc("Additional arguments to pass to the linker"));
 
   cl::opt<std::string>
@@ -119,14 +119,20 @@ namespace {
                cl::desc("<safe-tool arguments>..."),
                cl::ZeroOrMore, cl::PositionalEatsArgs);
 
-  cl::opt<std::string>
-  GCCBinary("gcc", cl::init("gcc"), 
-              cl::desc("The gcc binary to use. (default 'gcc')"));
+  cl::opt<sys::Path>
+  CCompilerBinary("compiler",
+#                 if defined(_MSC_VER)
+                    cl::init("cl.exe"),
+                    cl::desc("The compiler binary to use. (default 'cl.exe')"));
+#                 else
+                    cl::init("gcc"),
+                    cl::desc("The compiler binary to use. (default 'gcc')"));
+#                 endif
 
   cl::list<std::string>
-  GCCToolArgv("gcc-tool-args", cl::Positional,
-              cl::desc("<gcc-tool arguments>..."),
-              cl::ZeroOrMore, cl::PositionalEatsArgs);
+  CCompilerToolArgv("compiler-tool-args", cl::Positional,
+                    cl::desc("<compiler-tool arguments>..."),
+                    cl::ZeroOrMore, cl::PositionalEatsArgs);
 }
 
 //===----------------------------------------------------------------------===//
@@ -148,8 +154,8 @@ bool BugDriver::initializeExecutionEnvironment() {
   case AutoPick:
     InterpreterSel = RunCBE;
     Interpreter =
-      AbstractInterpreter::createCBE(getToolName(), Message, GCCBinary,
-                                     &ToolArgv, &GCCToolArgv);
+      AbstractInterpreter::createCBE(getToolName(), Message, CCompilerBinary,
+                                     &ToolArgv, &CCompilerToolArgv);
     if (!Interpreter) {
       InterpreterSel = RunJIT;
       Interpreter = AbstractInterpreter::createJIT(getToolName(), Message,
@@ -158,8 +164,8 @@ bool BugDriver::initializeExecutionEnvironment() {
     if (!Interpreter) {
       InterpreterSel = RunLLC;
       Interpreter = AbstractInterpreter::createLLC(getToolName(), Message,
-                                                   GCCBinary, &ToolArgv, 
-                                                   &GCCToolArgv);
+                                                   CCompilerBinary, &ToolArgv,
+                                                   &CCompilerToolArgv);
     }
     if (!Interpreter) {
       InterpreterSel = RunLLI;
@@ -179,8 +185,8 @@ bool BugDriver::initializeExecutionEnvironment() {
   case RunLLCIA:
   case LLC_Safe:
     Interpreter = AbstractInterpreter::createLLC(getToolName(), Message,
-                                                 GCCBinary, &ToolArgv, 
-                                                 &GCCToolArgv,
+                                                 CCompilerBinary, &ToolArgv,
+                                                 &CCompilerToolArgv,
                                                  InterpreterSel == RunLLCIA);
     break;
   case RunJIT:
@@ -190,8 +196,8 @@ bool BugDriver::initializeExecutionEnvironment() {
   case RunCBE:
   case CBE_bug:
     Interpreter = AbstractInterpreter::createCBE(getToolName(), Message,
-                                                 GCCBinary, &ToolArgv, 
-                                                 &GCCToolArgv);
+                                                 CCompilerBinary, &ToolArgv,
+                                                 &CCompilerToolArgv);
     break;
   case Custom:
     Interpreter = AbstractInterpreter::createCustom(Message, CustomExecCommand);
@@ -217,9 +223,9 @@ bool BugDriver::initializeExecutionEnvironment() {
       SafeInterpreterSel = RunLLC;
       SafeToolArgs.push_back("--relocation-model=pic");
       SafeInterpreter = AbstractInterpreter::createLLC(Path.c_str(), Message,
-                                                       GCCBinary, 
+                                                       CCompilerBinary,
                                                        &SafeToolArgs,
-                                                       &GCCToolArgv);
+                                                       &CCompilerToolArgv);
     }
 
     // In "llc-safe" mode, default to using LLC as the "safe" backend.
@@ -228,9 +234,9 @@ bool BugDriver::initializeExecutionEnvironment() {
       SafeInterpreterSel = RunLLC;
       SafeToolArgs.push_back("--relocation-model=pic");
       SafeInterpreter = AbstractInterpreter::createLLC(Path.c_str(), Message,
-                                                       GCCBinary, 
+                                                       CCompilerBinary,
                                                        &SafeToolArgs,
-                                                       &GCCToolArgv);
+                                                       &CCompilerToolArgv);
     }
 
     // Pick a backend that's different from the test backend. The JIT and
@@ -240,9 +246,9 @@ bool BugDriver::initializeExecutionEnvironment() {
         InterpreterSel != RunCBE) {
       SafeInterpreterSel = RunCBE;
       SafeInterpreter = AbstractInterpreter::createCBE(Path.c_str(), Message,
-                                                       GCCBinary,
+                                                       CCompilerBinary,
                                                        &SafeToolArgs,
-                                                       &GCCToolArgv);
+                                                       &CCompilerToolArgv);
     }
     if (!SafeInterpreter &&
         InterpreterSel != RunLLC &&
@@ -250,9 +256,9 @@ bool BugDriver::initializeExecutionEnvironment() {
       SafeInterpreterSel = RunLLC;
       SafeToolArgs.push_back("--relocation-model=pic");
       SafeInterpreter = AbstractInterpreter::createLLC(Path.c_str(), Message,
-                                                       GCCBinary, 
+                                                       CCompilerBinary,
                                                        &SafeToolArgs,
-                                                       &GCCToolArgv);
+                                                       &CCompilerToolArgv);
     }
     if (!SafeInterpreter) {
       SafeInterpreterSel = AutoPick;
@@ -263,14 +269,14 @@ bool BugDriver::initializeExecutionEnvironment() {
   case RunLLCIA:
     SafeToolArgs.push_back("--relocation-model=pic");
     SafeInterpreter = AbstractInterpreter::createLLC(Path.c_str(), Message,
-                                                     GCCBinary, &SafeToolArgs,
-                                                     &GCCToolArgv,
+                                                     CCompilerBinary, &SafeToolArgs,
+                                                     &CCompilerToolArgv,
                                                 SafeInterpreterSel == RunLLCIA);
     break;
   case RunCBE:
     SafeInterpreter = AbstractInterpreter::createCBE(Path.c_str(), Message,
-                                                     GCCBinary, &SafeToolArgs,
-                                                     &GCCToolArgv);
+                                                     CCompilerBinary, &SafeToolArgs,
+                                                     &CCompilerToolArgv);
     break;
   case Custom:
     SafeInterpreter = AbstractInterpreter::createCustom(Message,
@@ -282,9 +288,18 @@ bool BugDriver::initializeExecutionEnvironment() {
     break;
   }
   if (!SafeInterpreter) { outs() << Message << "\nExiting.\n"; exit(1); }
-  
-  gcc = GCC::create(Message, GCCBinary, &GCCToolArgv);
-  if (!gcc) { outs() << Message << "\nExiting.\n"; exit(1); }
+
+  // FIXME: Time to make a copy! We should look into adding SmallVectorImpl and
+  // StringRef support to cl::list...
+  SmallVector<StringRef, 8> CCToolArgv(CCompilerToolArgv.begin(),
+                                       CCompilerToolArgv.end());
+
+  Compiler = CCompiler::create(CCompiler::DefaultCompiler, Message,
+                               CCompilerBinary, CCToolArgv);
+  if (!Compiler) {
+    outs() << Message << "\nExiting.\n";
+    exit(1);
+  }
 
   // If there was an error creating the selected interpreter, quit with error.
   return Interpreter == 0;
@@ -299,7 +314,7 @@ void BugDriver::compileProgram(Module *M, std::string *Error) const {
   sys::Path BitcodeFile (OutputPrefix + "-test-program.bc");
   std::string ErrMsg;
   if (BitcodeFile.makeUnique(true, &ErrMsg)) {
-    errs() << ToolName << ": Error making unique filename: " << ErrMsg 
+    errs() << ToolName << ": Error making unique filename: " << ErrMsg
            << "\n";
     exit(1);
   }
@@ -413,14 +428,18 @@ std::string BugDriver::compileSharedObject(const std::string &BitcodeFile,
   sys::Path OutputFile;
 
   // Using the known-good backend.
-  GCC::FileType FT = SafeInterpreter->OutputCode(BitcodeFile, OutputFile,
-                                                 Error);
+  CompilerArgument::FileType FT = SafeInterpreter->OutputCode(BitcodeFile,
+                                                              OutputFile,
+                                                              Error);
   if (!Error.empty())
     return "";
 
-  std::string SharedObjectFile;
-  bool Failure = gcc->MakeSharedObject(OutputFile.str(), FT, SharedObjectFile,
-                                       AdditionalLinkerArgs, Error);
+  sys::Path SharedObjectFile;
+  bool Failure = Compiler->CompileProgram(OutputFile.str(),
+                                          SharedObjectFile
+                                          FT,
+                                          AdditionalLinkerArgs,
+                                          Error);
   if (!Error.empty())
     return "";
   if (Failure)
@@ -433,7 +452,7 @@ std::string BugDriver::compileSharedObject(const std::string &BitcodeFile,
 }
 
 /// createReferenceFile - calls compileProgram and then records the output
-/// into ReferenceOutputFile. Returns true if reference file created, false 
+/// into ReferenceOutputFile. Returns true if reference file created, false
 /// otherwise. Note: initializeExecutionEnvironment should be called BEFORE
 /// this function.
 ///
