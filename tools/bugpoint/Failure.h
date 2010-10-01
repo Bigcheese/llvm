@@ -85,20 +85,32 @@ namespace llvm {
 
     /// Returns a human readable string describing the failure. Does _NOT_
     /// include leading or trailing new line, capitalization, or punctuation.
-    // However, it may still contain embedded new lines.
-    virtual std::string message() const;
+    /// However, it may still contain embedded new lines.
+    virtual std::string message() const = 0;
+  };
 
-  protected:
-    error_code  Error;
+  class SystemFailure : public Failure {
+  public:
+    virtual std::string message() const {
+      return Error.message();
+    }
+
+    error_code Error;
   };
 
   class BugpointFailure : public Failure {
-    virtual std::string message() const;
+  public:
+    virtual std::string message() const {};
+
+    bugpoint_error Reason;
   };
 
   class ProgramUnderTestFailure : public Failure {
+  public:
+    virtual std::string message() const {};
+
+    program_under_test_failure Reason;
     std::vector<SmallString<8> > CommandLine;
-    virtual std::string message() const;
   };
 
   // Most failure chains should end up about 3 errors long. Containing: [The
@@ -109,8 +121,7 @@ namespace llvm {
   ///
   /// This class represents the path of a failure. The first item (index 0) is
   /// gernally the operating system error_code that reported the error, and the
-  /// last item is the higher level reason for failure. Errors lower than the
-  /// last should only be used for display to the user.
+  /// last item is the higher level reason for failure.
   typedef SmallVector<OwningPtr<Failure>, 3> FailureChain;
 }
 

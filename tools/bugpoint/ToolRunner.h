@@ -222,7 +222,6 @@ public:
   /// compileProgram - Compile the specified program from bitcode to executable
   /// code.  This does not produce any output, it is only used when debugging
   /// the code generator.  It returns false if the code generator fails.
-  // FIXME: [error-handling]
   virtual void compileProgram(const std::string &Bitcode,
                               FailureChain &Failures,
                               unsigned Timeout = 0,
@@ -232,13 +231,12 @@ public:
   /// understood by the GCC driver (either C or asm).  If the code generator
   /// fails, it sets Error, otherwise, this function returns the type of code
   /// emitted.
-  // FIXME: [error-handling]
   virtual CompilerArgument::FileType::_ OutputCode(const std::string &Bitcode,
                                                    sys::Path &OutFile,
                                                    FailureChain &Failures,
                                                    unsigned Timeout = 0,
                                                    unsigned MemoryLimit = 0) {
-    Error = "OutputCode not supported by this AbstractInterpreter!";
+    llvm_unreachable("OutputCode not supported by this AbstractInterpreter!");
     return CompilerArgument::FileType::Invalid;
   }
 
@@ -247,7 +245,6 @@ public:
   /// returns false if a problem was encountered that prevented execution of
   /// the program.
   ///
-  // FIXME: [error-handling]
   virtual int ExecuteProgram(const std::string &Bitcode,
                              const std::vector<std::string> &Args,
                              const std::string &InputFile,

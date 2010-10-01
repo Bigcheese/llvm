@@ -13,6 +13,7 @@
 
 #define DEBUG_TYPE "toolrunner"
 #include "ToolRunner.h"
+#include "Failure.h"
 #include "llvm/Support/Program.h"
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/Debug.h"
@@ -185,10 +186,11 @@ namespace {
                                const std::vector<std::string> &Args,
                                const std::string &InputFile,
                                const std::string &OutputFile,
-                               std::string *Error,
-                               const std::vector<std::string> &GCCArgs,
+                               FailureChain &Failures,
+                               const std::vector<std::string> &GCCArgs =
+                                 std::vector<std::string>(),
                                const std::vector<std::string> &SharedLibs =
-                               std::vector<std::string>(),
+                                 std::vector<std::string>(),
                                unsigned Timeout = 0,
                                unsigned MemoryLimit = 0);
   };
@@ -198,7 +200,7 @@ int LLI::ExecuteProgram(const std::string &Bitcode,
                         const std::vector<std::string> &Args,
                         const std::string &InputFile,
                         const std::string &OutputFile,
-                        std::string *Error,
+                        FailureChain &Failures,
                         const std::vector<std::string> &GCCArgs,
                         const std::vector<std::string> &SharedLibs,
                         unsigned Timeout,
@@ -236,7 +238,7 @@ int LLI::ExecuteProgram(const std::string &Bitcode,
 
 // LLI create method - Try to find the LLI executable
 AbstractInterpreter *AbstractInterpreter::createLLI(const char *Argv0,
-                                                    std::string &Message,
+                                                    FailureChain &Failures,
                                      const std::vector<std::string> *ToolArgs) {
   std::string LLIPath =
     PrependMainExecutablePath("lli", Argv0, (void *)(intptr_t)&createLLI).str();
