@@ -434,6 +434,9 @@ std::string BugDriver::compileSharedObject(const std::string &BitcodeFile,
   if (!Error.empty())
     return "";
 
+  CCompiler::ArgumentList_t CompilerArgs;
+
+
   sys::Path SharedObjectFile;
   bool Failure = Compiler->CompileProgram(OutputFile.str(),
                                           SharedObjectFile
