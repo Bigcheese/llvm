@@ -434,14 +434,24 @@ std::string BugDriver::compileSharedObject(const std::string &BitcodeFile,
   if (!Error.empty())
     return "";
 
-  CCompiler::ArgumentList_t CompilerArgs;
+  CCompiler::ArgumentList CompilerArgs(2 + AdditionalLinkerArgs.size());
+  {
+    namespace ca = CompilerArgument;
+    CompilerArgs.push_back(ca::ArgumentPtr(
+      new ca::InputFile(BitcodeFile, FT)));
+    CompilerArgs.push_back(ca::ArgumentPtr(
+      new ca::OutputFile(OutputFile.str(), ca::FileType::SharedObject)));
+  }
 
-
+  /*
+  OutputFile.str(),
+  SharedObjectFile
+  FT,
+  AdditionalLinkerArgs,
+  */
   sys::Path SharedObjectFile;
-  bool Failure = Compiler->CompileProgram(OutputFile.str(),
-                                          SharedObjectFile
-                                          FT,
-                                          AdditionalLinkerArgs,
+  bool Failure = Compiler->CompileProgram(CompilerArgs,
+                                          SharedObjectFile,
                                           Error);
   if (!Error.empty())
     return "";

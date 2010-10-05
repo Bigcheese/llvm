@@ -17,6 +17,7 @@
 #ifndef BUGPOINT_TOOLRUNNER_H
 #define BUGPOINT_TOOLRUNNER_H
 
+#include "llvm/ADT/OwningPtr.h"
 #include "llvm/ADT/SmallString.h"
 #include "llvm/ADT/Triple.h"
 #include "llvm/Support/CommandLine.h"
@@ -35,10 +36,11 @@ class CBE;
 class LLC;
 
 /// @brief A generic compiler argument.
-struct CompilerArgument {
+namespace CompilerArgument {
   struct /* enum class */ FileType {
     enum _ {
       Invalid,
+      AutoDetect,
       Asm,
       C,
       Executable,
@@ -52,28 +54,49 @@ struct CompilerArgument {
     operator int() const {return v_;}
   };
 
-  struct /* enum class */ ArgumentType {
-    enum _ {
-      InputFileType,  ///< Type or language of input file. (gcc: -x)
-      InputFilePath,  ///< Path to input file. (gcc: <positional>)
-      /// Type of output file in [Executable, Object, SharedObject]
-      OutputFileType,
-      OutputFilePath  ///< Path to output file. (gcc: -o)
-    };
+  struct Argument {
+    enum {
+      Invalid,
+      Raw,
+      InputFile,
+      OutputFile
+    } Kind;
 
-    _ v_;
-
-    ArgumentType(_ v) : v_(v) {}
-    operator int() const {return v_;}
+    Argument() : Kind(Invalid) {}
+    virtual ~Argument();
   };
 
-  ArgumentType ArgType;
-  sys::Path Path; ///< Silly C++, POD types are for C!
-  union {
-    FileType::_ InputFileType;
-    FileType::_ OutputFileType;
+  /// A user supplied argument.
+  struct Raw : Argument {
+    Raw(StringRef arg) : Arg(arg) {}
+
+    StringRef Arg;
   };
-};
+
+  struct InputFile : Argument {
+    InputFile(StringRef path, FileType fileType = FileType::AutoDetect)
+      : Path(path)
+      , Type(fileType) {
+      Kind = Argument::InputFile;
+    }
+
+    StringRef Path;
+    FileType  Type;
+  };
+
+  struct OutputFile : Argument {
+    OutputFile(StringRef path, FileType fileType = FileType::AutoDetect)
+      : Path(path)
+      , Type(fileType) {
+      Kind = Argument::OutputFile;
+    }
+
+    StringRef Path;
+    FileType  Type;
+  };
+
+  typedef OwningPtr<Argument> ArgumentPtr;
+}
 
 /// @brief Abstract interface to a C compiler.
 class CCompiler {
@@ -93,8 +116,7 @@ public:
 #endif
 
   // Typedefs.
-  typedef SmallVectorImpl<CompilerArgument> ArgumentList;
-  typedef SmallVectorImpl<StringRef>    UserArgumentList;
+  typedef SmallVectorImpl<CompilerArgument::ArgumentPtr> ArgumentList;
 
   // No public constructor.
   virtual ~CCompiler();
@@ -110,7 +132,7 @@ public:
   static CCompiler* create(Compilers CompilerType,
                            std::string &Error,
                            const sys::Path &ExecutablePath,
-                           const UserArgumentList &UserArgs);
+                           const ArgumentList &UserArgs);
 
   /// @name Abstract CCompiler Interface
   /// @{
@@ -145,7 +167,7 @@ public:
   virtual bool CompileAndExecuteProgram(// Compile options.
                                         const ArgumentList &CompileArgs,
                                         // Execute options.
-                                        const UserArgumentList &ExecuteArgs,
+                                        const ArgumentList &ExecuteArgs,
                                         const sys::Path &STDInput,
                                         const sys::Path &STDOutput,
                                         unsigned Timeout,
@@ -178,21 +200,17 @@ protected:
   // Constructor.
   CCompiler(const sys::Path &executablePath,
             const sys::Path &remoteClientPath,
-            const ArgumentList &arguments,
-            const UserArgumentList &userArguments)
+            const ArgumentList &arguments)
   : ExecutablePath(executablePath)
   , RemoteClientPath(remoteClientPath)
   , Arguments(arguments.begin(), arguments.end())
-  , UserArguments(userArguments.begin(), userArguments.end())
   {}
 
   // State.
-  typedef SmallVector<CompilerArgument, 8> ArgumentList_t;
-  typedef SmallVector<std::string, 2>  UserArgumentList_t;
+  typedef SmallVector<OwningPtr<CompilerArgument::Argument>, 8> ArgumentList_t;
   sys::Path ExecutablePath;   ///< The path to the compiler executable.
   sys::Path RemoteClientPath; ///< The path to the rsh / ssh executable.
-  ArgumentList_t     Arguments;     ///< List of compiler independent arguments.
-  UserArgumentList_t UserArguments; ///< List of compiler specific arguments.
+  ArgumentList_t     Arguments;     ///< List of compiler arguments.
 
 private:
   // Noncopyable.
