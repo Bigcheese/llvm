@@ -8,9 +8,9 @@
 //===----------------------------------------------------------------------===//
 //
 /// @file
-/// This file contains the declarations for the subclasses of Constant, 
+/// This file contains the declarations for the subclasses of Constant,
 /// which represent the different flavors of constant values that live in LLVM.
-/// Note that Constants are immutable (once created they never change) and are 
+/// Note that Constants are immutable (once created they never change) and are
 /// fully shared by structural equivalence.  This means that two structurally
 /// equivalent constants will always have the same address.  Constant's are
 /// created on demand as needed and never deleted: thus clients don't have to
@@ -43,7 +43,7 @@ template<typename T, unsigned N>
 class SmallVector;
 
 //===----------------------------------------------------------------------===//
-/// This is the shared class of boolean and integer constants. This class 
+/// This is the shared class of boolean and integer constants. This class
 /// represents both boolean and integral constants.
 /// @brief Class for constant integers.
 class ConstantInt : public Constant {
@@ -59,11 +59,11 @@ protected:
 public:
   static ConstantInt *getTrue(LLVMContext &Context);
   static ConstantInt *getFalse(LLVMContext &Context);
-  
+
   /// If Ty is a vector type, return a Constant with a splat of the given
   /// value. Otherwise return a ConstantInt for the given value.
   static Constant *get(const Type *Ty, uint64_t V, bool isSigned = false);
-                              
+
   /// Return a ConstantInt with the specified integer value for the specified
   /// type. If the type is wider than 64 bits, the value will be zero-extended
   /// to fit the type, unless isSigned is true, in which case the value will
@@ -80,27 +80,27 @@ public:
   /// @brief Get a ConstantInt for a specific signed value.
   static ConstantInt *getSigned(const IntegerType *Ty, int64_t V);
   static Constant *getSigned(const Type *Ty, int64_t V);
-  
+
   /// Return a ConstantInt with the specified value and an implied Type. The
   /// type is the integer type that corresponds to the bit width of the value.
   static ConstantInt *get(LLVMContext &Context, const APInt &V);
 
   /// Return a ConstantInt constructed from the string strStart with the given
-  /// radix. 
+  /// radix.
   static ConstantInt *get(const IntegerType *Ty, StringRef Str,
                           uint8_t radix);
-  
+
   /// If Ty is a vector type, return a Constant with a splat of the given
   /// value. Otherwise return a ConstantInt for the given value.
   static Constant *get(const Type* Ty, const APInt& V);
-  
+
   /// Return the constant as an APInt value reference. This allows clients to
   /// obtain a copy of the value, with all its precision in tact.
   /// @brief Return the constant's value.
   inline const APInt &getValue() const {
     return Val;
   }
-  
+
   /// getBitWidth - Return the bitwidth of this constant.
   unsigned getBitWidth() const { return Val.getBitWidth(); }
 
@@ -122,8 +122,8 @@ public:
     return Val.getSExtValue();
   }
 
-  /// A helper method that can be used to determine if the constant contained 
-  /// within is equal to a constant.  This only works for very small values, 
+  /// A helper method that can be used to determine if the constant contained
+  /// within is equal to a constant.  This only works for very small values,
   /// because this is all that can be represented with all types.
   /// @brief Determine if this constant's value is same as an unsigned char.
   bool equalsInt(uint64_t V) const {
@@ -137,11 +137,11 @@ public:
     return reinterpret_cast<const IntegerType*>(Value::getType());
   }
 
-  /// This static method returns true if the type Ty is big enough to 
-  /// represent the value V. This can be used to avoid having the get method 
+  /// This static method returns true if the type Ty is big enough to
+  /// represent the value V. This can be used to avoid having the get method
   /// assert when V is larger than Ty can represent. Note that there are two
   /// versions of this method, one for unsigned and one for signed integers.
-  /// Although ConstantInt canonicalizes everything to an unsigned integer, 
+  /// Although ConstantInt canonicalizes everything to an unsigned integer,
   /// the signed version avoids callers having to convert a signed quantity
   /// to the appropriate unsigned type before calling the method.
   /// @returns true if V is a valid value for type Ty
@@ -153,8 +153,8 @@ public:
   /// value that would be returned by the getNullValue method.
   /// @returns true if this is the null integer value.
   /// @brief Determine if the value is null.
-  virtual bool isNullValue() const { 
-    return Val == 0; 
+  virtual bool isNullValue() const {
+    return Val == 0;
   }
 
   /// This is just a convenience method to make client code smaller for a
@@ -164,7 +164,7 @@ public:
     return Val == 0;
   }
 
-  /// This is just a convenience method to make client code smaller for a 
+  /// This is just a convenience method to make client code smaller for a
   /// common case. It also correctly performs the comparison without the
   /// potential for an assertion from getZExtValue().
   /// @brief Determine if the value is one.
@@ -176,17 +176,17 @@ public:
   /// to true.
   /// @returns true iff this constant's bits are all set to true.
   /// @brief Determine if the value is all ones.
-  bool isAllOnesValue() const { 
+  bool isAllOnesValue() const {
     return Val.isAllOnesValue();
   }
 
   /// This function will return true iff this constant represents the largest
   /// value that may be represented by the constant's type.
-  /// @returns true iff this is the largest value that may be represented 
+  /// @returns true iff this is the largest value that may be represented
   /// by this type.
   /// @brief Determine if the value is maximal.
   bool isMaxValue(bool isSigned) const {
-    if (isSigned) 
+    if (isSigned)
       return Val.isMaxSignedValue();
     else
       return Val.isMaxValue();
@@ -194,11 +194,11 @@ public:
 
   /// This function will return true iff this constant represents the smallest
   /// value that may be represented by this constant's type.
-  /// @returns true if this is the smallest value that may be represented by 
+  /// @returns true if this is the smallest value that may be represented by
   /// this type.
   /// @brief Determine if the value is minimal.
   bool isMinValue(bool isSigned) const {
-    if (isSigned) 
+    if (isSigned)
       return Val.isMinSignedValue();
     else
       return Val.isMinValue();
@@ -250,7 +250,7 @@ public:
   /// method returns the negative zero constant for floating point or vector
   /// floating point types; for all other types, it returns the null value.
   static Constant *getZeroValueForNegation(const Type *Ty);
-  
+
   /// get() - This returns a ConstantFP, or a vector containing a splat of a
   /// ConstantFP, for the specified value in the specified type.  This should
   /// only be used for simple constant values like 2.0/1.0 etc, that are
@@ -270,8 +270,8 @@ public:
   /// getNullValue.  For ConstantFP, this is +0.0, but not -0.0.  To handle the
   /// two the same, use isZero().
   virtual bool isNullValue() const;
-  
-  /// isNegativeZeroValue - Return true if the value is what would be returned 
+
+  /// isNegativeZeroValue - Return true if the value is what would be returned
   /// by getZeroValueForNegation.
   virtual bool isNegativeZeroValue() const {
     return Val.isZero() && Val.isNegative();
@@ -324,7 +324,7 @@ protected:
   }
 public:
   static ConstantAggregateZero* get(const Type *Ty);
-  
+
   /// isNullValue - Return true if this is the value that would be returned by
   /// getNullValue.
   virtual bool isNullValue() const { return true; }
@@ -352,18 +352,18 @@ protected:
 public:
   // ConstantArray accessors
   static Constant *get(const ArrayType *T, const std::vector<Constant*> &V);
-  static Constant *get(const ArrayType *T, Constant *const *Vals, 
+  static Constant *get(const ArrayType *T, Constant *const *Vals,
                        unsigned NumVals);
-                             
+
   /// This method constructs a ConstantArray and initializes it with a text
   /// string. The default behavior (AddNull==true) causes a null terminator to
   /// be placed at the end of the array. This effectively increases the length
-  /// of the array by one (you've been warned).  However, in some situations 
+  /// of the array by one (you've been warned).  However, in some situations
   /// this is not desired so if AddNull==false then the string is copied without
   /// null termination.
   static Constant *get(LLVMContext &Context, StringRef Initializer,
                        bool AddNull = true);
-  
+
   /// Transparently provide more efficient getOperand methods.
   DECLARE_TRANSPARENT_OPERAND_ACCESSORS(Constant);
 
@@ -423,7 +423,7 @@ protected:
 public:
   // ConstantStruct accessors
   static Constant *get(const StructType *T, const std::vector<Constant*> &V);
-  static Constant *get(LLVMContext &Context, 
+  static Constant *get(LLVMContext &Context,
                        const std::vector<Constant*> &V, bool Packed);
   static Constant *get(LLVMContext &Context,
                        Constant *const *Vals, unsigned NumVals, bool Packed);
@@ -475,7 +475,7 @@ public:
   static Constant *get(const VectorType *T, const std::vector<Constant*> &V);
   static Constant *get(const std::vector<Constant*> &V);
   static Constant *get(Constant *const *Vals, unsigned NumVals);
-  
+
   /// Transparently provide more efficient getOperand methods.
   DECLARE_TRANSPARENT_OPERAND_ACCESSORS(Constant);
 
@@ -485,7 +485,7 @@ public:
   inline const VectorType *getType() const {
     return reinterpret_cast<const VectorType*>(Value::getType());
   }
-  
+
   /// isNullValue - Return true if this is the value that would be returned by
   /// getNullValue.  This always returns false because zero vectors are always
   /// created as ConstantAggregateZero objects.
@@ -567,24 +567,24 @@ class BlockAddress : public Constant {
 public:
   /// get - Return a BlockAddress for the specified function and basic block.
   static BlockAddress *get(Function *F, BasicBlock *BB);
-  
+
   /// get - Return a BlockAddress for the specified basic block.  The basic
   /// block must be embedded into a function.
   static BlockAddress *get(BasicBlock *BB);
-  
+
   /// Transparently provide more efficient getOperand methods.
   DECLARE_TRANSPARENT_OPERAND_ACCESSORS(Value);
-  
+
   Function *getFunction() const { return (Function*)Op<0>().get(); }
   BasicBlock *getBasicBlock() const { return (BasicBlock*)Op<1>().get(); }
-  
+
   /// isNullValue - Return true if this is the value that would be returned by
   /// getNullValue.
   virtual bool isNullValue() const { return false; }
-  
+
   virtual void destroyConstant();
   virtual void replaceUsesOfWithOnConstant(Value *From, Value *To, Use *U);
-  
+
   /// Methods for support type inquiry through isa, cast, and dyn_cast:
   static inline bool classof(const BlockAddress *) { return true; }
   static inline bool classof(const Value *V) {
@@ -597,7 +597,7 @@ struct OperandTraits<BlockAddress> : public FixedNumOperandTraits<2> {
 };
 
 DEFINE_TRANSPARENT_CASTED_OPERAND_ACCESSORS(BlockAddress, Value)
-  
+
 //===----------------------------------------------------------------------===//
 /// ConstantExpr - a constant value that is initialized with an expression using
 /// other constant values.
@@ -652,14 +652,14 @@ public:
   /// getAlignOf constant expr - computes the alignment of a type in a target
   /// independent way (Note: the return type is an i64).
   static Constant *getAlignOf(const Type* Ty);
-  
+
   /// getSizeOf constant expr - computes the (alloc) size of a type (in
   /// address-units, not bits) in a target independent way (Note: the return
   /// type is an i64).
   ///
   static Constant *getSizeOf(const Type* Ty);
 
-  /// getOffsetOf constant expr - computes the offset of a struct field in a 
+  /// getOffsetOf constant expr - computes the offset of a struct field in a
   /// target independent way (Note: the return type is an i64).
   ///
   static Constant *getOffsetOf(const StructType* STy, unsigned FieldNo);
@@ -668,7 +668,7 @@ public:
   /// which supports any aggregate type, and any Constant index.
   ///
   static Constant *getOffsetOf(const Type* Ty, Constant *FieldNo);
-  
+
   static Constant *getNeg(Constant *C);
   static Constant *getFNeg(Constant *C);
   static Constant *getNot(Constant *C);
@@ -730,7 +730,7 @@ public:
     const Type *Ty ///< The type to zext or bitcast C to
   );
 
-  // @brief Create a SExt or BitCast cast constant expression 
+  // @brief Create a SExt or BitCast cast constant expression
   static Constant *getSExtOrBitCast(
     Constant *C,   ///< The constant to sext or bitcast
     const Type *Ty ///< The type to sext or bitcast C to
@@ -750,14 +750,14 @@ public:
 
   /// @brief Create a ZExt, Bitcast or Trunc for integer -> integer casts
   static Constant *getIntegerCast(
-    Constant *C,    ///< The integer constant to be casted 
+    Constant *C,    ///< The integer constant to be casted
     const Type *Ty, ///< The integer type to cast to
     bool isSigned   ///< Whether C should be treated as signed or not
   );
 
   /// @brief Create a FPExt, Bitcast or FPTrunc for fp -> fp casts
   static Constant *getFPCast(
-    Constant *C,    ///< The integer constant to be casted 
+    Constant *C,    ///< The integer constant to be casted
     const Type *Ty ///< The integer type to cast to
   );
 
@@ -845,7 +845,7 @@ public:
   /// getWithOperandReplaced - Return a constant expression identical to this
   /// one, but with the specified operand set to the specified value.
   Constant *getWithOperandReplaced(unsigned OpNo, Constant *Op) const;
-  
+
   /// getWithOperands - This returns the current constant expression with the
   /// operands replaced with the specified values.  The specified operands must
   /// match count and type with the existing ones.
@@ -853,7 +853,7 @@ public:
     return getWithOperands(&Ops[0], (unsigned)Ops.size());
   }
   Constant *getWithOperands(Constant *const *Ops, unsigned NumOps) const;
-  
+
   virtual void destroyConstant();
   virtual void replaceUsesOfWithOnConstant(Value *From, Value *To, Use *U);
 
@@ -862,7 +862,7 @@ public:
   static inline bool classof(const Value *V) {
     return V->getValueID() == ConstantExprVal;
   }
-  
+
 private:
   // Shadow Value::setValueSubclassData with a private forwarding method so that
   // subclasses cannot accidentally use it.
