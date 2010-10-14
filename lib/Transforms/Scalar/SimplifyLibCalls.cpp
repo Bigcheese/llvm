@@ -26,12 +26,14 @@
 #include "llvm/Analysis/ValueTracking.h"
 #include "llvm/Target/TargetData.h"
 #include "llvm/ADT/SmallPtrSet.h"
+#include "llvm/ADT/StringExtras.h"
 #include "llvm/ADT/StringMap.h"
 #include "llvm/ADT/Statistic.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/raw_ostream.h"
 #include "llvm/Config/config.h"
+#include <cctype>
 using namespace llvm;
 
 STATISTIC(NumSimplified, "Number of library calls simplified");
@@ -582,6 +584,134 @@ struct StrToOpt : public LibCallOptimization {
     }
 
     return 0;
+  }
+};
+
+//===---------------------------------------===//
+// 'ato{f,i,l,ll}' Optimizations
+
+struct AToXOpt : LibCallOptimization {
+  static Value *Get0ReturnValue(const Type *ReturnType) {
+    if (ReturnType->isFloatingPointTy())
+      return ConstantFP::get(ReturnType, 0.0);
+
+    const IntegerType *IT = cast<const IntegerType>(ReturnType);
+    return ConstantInt::get(IT, 0, true);
+  }
+
+  static bool isstandardspace(char c) {
+    switch (c) {
+    case ' ':
+    case '\f':
+    case '\n':
+    case '\r':
+    case '\t':
+    case '\v':
+      return true;
+    default:
+      return false;
+    }
+  }
+
+  // A floating point value is one of the non-empty sequence of:
+  // * [+-]?[0-9]*.?[0-9]*([Ee][+-]?[0-9]+)?
+  // * [+-]?0[Xx][0-9A-Fa-f]*.?[0-9A-Fa-f]*([Pp][+-]?[0-9]+)?
+  // * [+-]?INF(INITY)? ignoring case
+  // * [+-]?NAN[_0-9A-Za-z]* ignoring case in NAN
+  //
+  // We can only const eval a floating point number if it does not contain a
+  // decimal due to locale differences.
+  Value *ParseFloat(const Type *FloatType, StringRef str) {
+    // The float is parsed from strto{d,f,ld} format to the format that APFloat
+    // expects. Then a constant value is constructed from this.
+
+    StringRef::const_iterator p = str.begin();
+    StringRef::const_iterator e = str.end();
+    bool IsNeg = *p == '-';
+    if (*p == '-' || *p == '+')
+      ++p;
+
+    std::string LowerCaseStr = LowercaseString(StringRef(p, str.end() - p));
+
+    switch (*p) {
+    case 'I':
+    case 'i':
+      // This handles both inf and infinite.
+      if (LowerCaseStr.find("inf") == 0)
+        return ConstantFP::getInfinity(FloatType, IsNeg);
+      break;
+    case 'N':
+    case 'n':
+      std::string::size_type f = LowerCaseStr.find("nan");
+      if (f == 0) {
+        // Check to see if it's follwed by any platform specific weirdness.
+        if (LowerCaseStr.size() > 3
+            && (!std::isdigit(LowerCaseStr[f])
+                || !LowerCaseStr[f] == '_'
+                || !(LowerCaseStr[f] >= 'a'
+                     && LowerCaseStr[f] <= 'z')))
+          // Leave the call and let the stdlib figure this out.
+          return 0;
+
+        return ConstantFP::getNaN(FloatType, IsNeg);
+      }
+      break;
+    }
+
+    return 0;
+  }
+
+  Value *ParseInt(const Type *IntType, StringRef str) {
+    StringRef::const_iterator p = str.begin();
+    StringRef::const_iterator e = str.end();
+    bool IsNeg = *p == '-';
+    if (*p == '-' || *p == '+')
+      ++p;
+
+    // Return 0 if there are no digits.
+    if (p == e)
+      return Get0ReturnValue(IntType);
+
+    // Get all digits.
+    for (; p != e; ++p) {
+      if (!std::isdigit(*p))
+        break;
+    }
+
+    // Parse and return the number.
+    const IntegerType *IT = cast<const IntegerType>(IntType);
+    return ConstantInt::get(IT, StringRef(str.begin(), e - str.begin()), 10);
+  }
+
+  virtual Value *CallOptimizer(Function *Callee, CallInst *CI, IRBuilder<> &B) {
+    const FunctionType *FT = Callee->getFunctionType();
+    // Require a const char* as input and a double return.
+    if (FT->getNumParams() != 1
+        || !FT->getParamType(0)->isPointerTy()
+        || !(FT->getReturnType()->isDoubleTy()
+             || FT->getReturnType()->isIntegerTy()))
+      return 0;
+
+    // All of these require a constant string as input.
+    std::string NumStr;
+    if (!GetConstantStringInfo(CI->getArgOperand(0), NumStr))
+      return 0;
+
+    const Type *RT = FT->getReturnType();
+
+    // See the C standard 7.22.1 for reference.
+
+    // Strip _known_ whitespace. See 7.4.1.10 [isspace].
+    NumStr.erase(NumStr.begin(), std::find_if_not(NumStr.begin(), NumStr.end(),
+      isstandardspace));
+
+    // String must be non empty...
+    if (NumStr.empty())
+      return Get0ReturnValue(RT);
+
+    if (RT->isIntegerTy())
+      return ParseInt(RT, NumStr);
+    return ParseFloat(RT, NumStr);
   }
 };
 
@@ -1390,6 +1520,7 @@ namespace {
     StrNCpyOpt StrNCpy; StrLenOpt StrLen; StrPBrkOpt StrPBrk;
     StrToOpt StrTo; StrSpnOpt StrSpn; StrCSpnOpt StrCSpn; StrStrOpt StrStr;
     MemCmpOpt MemCmp; MemCpyOpt MemCpy; MemMoveOpt MemMove; MemSetOpt MemSet;
+    AToXOpt AToX;
     // Math Library Optimizations
     PowOpt Pow; Exp2Opt Exp2; UnaryDoubleFPOpt UnaryDoubleFP;
     // Integer Optimizations
@@ -1434,6 +1565,10 @@ FunctionPass *llvm::createSimplifyLibCallsPass() {
 /// we know.
 void SimplifyLibCalls::InitOptimizations() {
   // String and Memory LibCall Optimizations
+  Optimizations["atof"] = &AToX;
+  Optimizations["atoi"] = &AToX;
+  Optimizations["atol"] = &AToX;
+  Optimizations["atoll"] = &AToX;
   Optimizations["strcat"] = &StrCat;
   Optimizations["strncat"] = &StrNCat;
   Optimizations["strchr"] = &StrChr;

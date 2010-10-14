@@ -260,7 +260,8 @@ public:
   static ConstantFP *get(LLVMContext &Context, const APFloat &V);
   static ConstantFP *getNegativeZero(const Type* Ty);
   static ConstantFP *getInfinity(const Type *Ty, bool Negative = false);
-  
+  static ConstantFP *getNaN(const Type *Ty, bool Negative = false);
+
   /// isValueValidForType - return true if Ty is big enough to represent V.
   static bool isValueValidForType(const Type *Ty, const APFloat &V);
   inline const APFloat& getValueAPF() const { return Val; }

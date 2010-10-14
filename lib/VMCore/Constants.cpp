@@ -451,6 +451,12 @@ ConstantFP *ConstantFP::getInfinity(const Type *Ty, bool Negative) {
                          APFloat::getInf(Semantics, Negative));
 }
 
+ConstantFP *ConstantFP::getNaN(const Type *Ty, bool Negative) {
+  const fltSemantics &Semantics = *TypeToFloatSemantics(Ty);
+  return ConstantFP::get(Ty->getContext(),
+                         APFloat::getNaN(Semantics, Negative));
+}
+
 ConstantFP::ConstantFP(const Type *Ty, const APFloat& V)
   : Constant(Ty, ConstantFPVal, 0, 0), Val(V) {
   assert(&V.getSemantics() == TypeToFloatSemantics(Ty) &&
