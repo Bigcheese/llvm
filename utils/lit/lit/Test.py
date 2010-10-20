@@ -41,6 +41,14 @@ class TestSuite:
     def getExecPath(self, components):
         return os.path.join(self.exec_root, *components)
 
+class StageResult(object):
+  """ StageResult - Results from a single stage."""
+
+  def __init__(self, name):
+    self.name = name
+    self.elapsed_time = None
+    self.data = dict()
+
 class Test:
     """Test - Information on a single test instance."""
 
