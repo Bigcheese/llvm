@@ -444,6 +444,9 @@ def main(builtinParameters = {}):    # Bump the GIL check interval, its more imp
     group.add_option("", "--repeat", dest="repeatTests", metavar="N",
                       help="Repeat tests N times (for timing)",
                       action="store", default=None, type=int)
+    group.add_option("", "--custom-report", dest="customReport",
+                     help="Use custom TestSuite function to print report",
+                     action="store_true", default=False)
     parser.add_option_group(group)
 
     (opts, args) = parser.parse_args()
@@ -632,6 +635,16 @@ def main(builtinParameters = {}):    # Bump the GIL check interval, its more imp
         N = len(byCode.get(code,[]))
         if N:
             print '  %s: %d' % (name,N)
+
+    if opts.customReport:
+        suitesAndTests = dict([(ts,[])
+                               for ts,_ in testSuiteCache.values()
+                               if ts])
+        for t in tests:
+            suitesAndTests[t.suite].append(t)
+
+        for suite in suitesAndTests.keys():
+          suite.config.test_format.custom_print_results(suitesAndTests[suite])
 
     # If we encountered any additional errors, exit abnormally.
     if litConfig.numErrors:
