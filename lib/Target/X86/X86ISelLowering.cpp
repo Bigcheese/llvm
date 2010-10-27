@@ -428,12 +428,13 @@ X86TargetLowering::X86TargetLowering(X86TargetMachine &TM)
 
   setOperationAction(ISD::STACKSAVE,          MVT::Other, Expand);
   setOperationAction(ISD::STACKRESTORE,       MVT::Other, Expand);
-  if (Subtarget->is64Bit())
-    setOperationAction(ISD::DYNAMIC_STACKALLOC, MVT::i64, Expand);
-  if (Subtarget->isTargetCygMing() || Subtarget->isTargetWindows())
-    setOperationAction(ISD::DYNAMIC_STACKALLOC, MVT::i32, Custom);
-  else
-    setOperationAction(ISD::DYNAMIC_STACKALLOC, MVT::i32, Expand);
+  {
+    LegalizeAction action = Subtarget->isTargetCygMing() ||
+                            Subtarget->isTargetWindows() ? Custom : Expand;
+    setOperationAction(ISD::DYNAMIC_STACKALLOC, MVT::i32, action);
+    if (Subtarget->is64Bit())
+      setOperationAction(ISD::DYNAMIC_STACKALLOC, MVT::i64, action);
+  }
 
   if (!UseSoftFloat && X86ScalarSSEf64) {
     // f32 and f64 use SSE.
@@ -7523,8 +7524,10 @@ X86TargetLowering::LowerDYNAMIC_STACKALLOC(SDValue Op,
   SDValue Flag;
 
   EVT SPTy = Subtarget->is64Bit() ? MVT::i64 : MVT::i32;
+  unsigned Reg = Subtarget->is64Bit() && Subtarget->isTargetWindows()
+               ? X86::RAX : X86::EAX;
 
-  Chain = DAG.getCopyToReg(Chain, dl, X86::EAX, Size, Flag);
+  Chain = DAG.getCopyToReg(Chain, dl, Reg, Size, Flag);
   Flag = Chain.getValue(1);
 
   SDVTList NodeTys = DAG.getVTList(MVT::Other, MVT::Flag);
@@ -9957,16 +9960,32 @@ X86TargetLowering::EmitLoweredWinAlloca(MachineInstr *MI,
   // FIXME: The code should be tweaked as soon as we'll try to do codegen for
   // mingw-w64.
 
-  const char *StackProbeSymbol =
-      Subtarget->isTargetWindows() ? "_chkstk" : "_alloca";
+  if (Subtarget->isTargetCygMing() || Subtarget->isTargetWin32()) {
+    const char *StackProbeSymbol =
+        Subtarget->isTargetWindows() ? "_chkstk" : "_alloca";
+    unsigned CallOp = Subtarget->is64Bit() ? X86::CALL64pcrel32
+                                           : X86::CALLpcrel32;
+    // Allocates stack pages and moves ESP.
+    BuildMI(*BB, MI, DL, TII->get(CallOp))
+      .addExternalSymbol(StackProbeSymbol)
+      .addReg(X86::EAX, RegState::Implicit)
+      .addReg(X86::ESP, RegState::Implicit)
+      .addReg(X86::EAX, RegState::Define | RegState::Implicit)
+      .addReg(X86::ESP, RegState::Define | RegState::Implicit)
+      .addReg(X86::EFLAGS, RegState::Define | RegState::Implicit);
+  } else if (Subtarget->isTargetWin64()) {
+    // Only allocates stack pages.
+    BuildMI(*BB, MI, DL, TII->get(X86::WINCALL64pcrel32))
+      .addExternalSymbol("__chkstk")
+      .addReg(X86::RAX, RegState::Implicit)
+      .addReg(X86::RSP, RegState::Define | RegState::Implicit);
 
-  BuildMI(*BB, MI, DL, TII->get(X86::CALLpcrel32))
-    .addExternalSymbol(StackProbeSymbol)
-    .addReg(X86::EAX, RegState::Implicit)
-    .addReg(X86::ESP, RegState::Implicit)
-    .addReg(X86::EAX, RegState::Define | RegState::Implicit)
-    .addReg(X86::ESP, RegState::Define | RegState::Implicit)
-    .addReg(X86::EFLAGS, RegState::Define | RegState::Implicit);
+    // Move RSP.
+    BuildMI(*BB, MI, DL, TII->get(X86::SUB64rr), X86::RSP)
+      .addReg(X86::RSP)
+      .addReg(X86::RAX);
+  } else
+    llvm_unreachable("WIN_ALLOCA used on non-Windows target!");
 
   MI->eraseFromParent();   // The pseudo instruction is gone now.
   return BB;
