@@ -970,7 +970,7 @@ void FPS::handleZeroArgFP(MachineBasicBlock::iterator &I) {
   // Change from the pseudo instruction to the concrete instruction.
   MI->RemoveOperand(0);   // Remove the explicit ST(0) operand
   MI->setDesc(TII->get(getConcreteOpcode(MI->getOpcode())));
-  
+
   // Result gets pushed on the stack.
   pushReg(DestReg);
 }
@@ -1011,7 +1011,7 @@ void FPS::handleOneArgFP(MachineBasicBlock::iterator &I) {
   } else {
     moveToTop(Reg, I);            // Move to the top of the stack...
   }
-  
+
   // Convert from the pseudo instruction to the concrete instruction.
   MI->RemoveOperand(NumOps-1);    // Remove explicit ST(0) operand
   MI->setDesc(TII->get(getConcreteOpcode(MI->getOpcode())));
@@ -1292,7 +1292,7 @@ void FPS::handleCondMovFP(MachineBasicBlock::iterator &I) {
   MI->RemoveOperand(1);
   MI->getOperand(0).setReg(getSTReg(Op1));
   MI->setDesc(TII->get(getConcreteOpcode(MI->getOpcode())));
-  
+
   // If we kill the second operand, make sure to pop it from the stack.
   if (Op0 != Op1 && KillsOp1) {
     // Get this value off of the register stack.
@@ -1327,7 +1327,7 @@ void FPS::handleSpecialFP(MachineBasicBlock::iterator &I) {
     // At this point, we've pushed FP1 on the top of stack, so it should be
     // present if it isn't dead.  If it was dead, we already emitted a pop to
     // remove it from the stack and StackTop = 0.
-    
+
     // Push FP4 as top of stack next.
     pushReg(getFPReg(MI->getOperand(0)));
 
@@ -1337,15 +1337,15 @@ void FPS::handleSpecialFP(MachineBasicBlock::iterator &I) {
     // continue in this case.
     if (StackTop == 1)
       break;
-    
+
     // Because pushReg just pushed ST(1) as TOS, we now have to swap the two top
     // elements so that our accounting is correct.
     unsigned RegOnTop = getStackEntry(0);
     unsigned RegNo = getStackEntry(1);
-    
+
     // Swap the slots the regs are in.
     std::swap(RegMap[RegNo], RegMap[RegOnTop]);
-    
+
     // Swap stack slot contents.
     if (RegMap[RegOnTop] >= StackTop)
       report_fatal_error("Access past stack top!");
@@ -1397,11 +1397,11 @@ void FPS::handleSpecialFP(MachineBasicBlock::iterator &I) {
   case X86::MOV_Fp3232:
   case X86::MOV_Fp3264:
   case X86::MOV_Fp6432:
-  case X86::MOV_Fp6464: 
+  case X86::MOV_Fp6464:
   case X86::MOV_Fp3280:
   case X86::MOV_Fp6480:
   case X86::MOV_Fp8032:
-  case X86::MOV_Fp8064: 
+  case X86::MOV_Fp8064:
   case X86::MOV_Fp8080: {
     const MachineOperand &MO1 = MI->getOperand(1);
     unsigned SrcReg = getFPReg(MO1);
@@ -1434,10 +1434,10 @@ void FPS::handleSpecialFP(MachineBasicBlock::iterator &I) {
       if (!Op.isReg() || Op.getReg() < X86::FP0 || Op.getReg() > X86::FP6)
         continue;
       assert(Op.isUse() && "Only handle inline asm uses right now");
-      
+
       unsigned FPReg = getFPReg(Op);
       Op.setReg(getSTReg(FPReg));
-      
+
       // If we kill this operand, make sure to pop it from the stack after the
       // asm.  We just remember it for now, and pop them all off at the end in
       // a batch.
@@ -1461,7 +1461,7 @@ void FPS::handleSpecialFP(MachineBasicBlock::iterator &I) {
     // Don't delete the inline asm!
     return;
   }
-      
+
   case X86::RET:
   case X86::RETI:
     // If RET has an FP register use operand, pass the first one in ST(0) and
@@ -1509,38 +1509,38 @@ void FPS::handleSpecialFP(MachineBasicBlock::iterator &I) {
       // Assert that the top of stack contains the right FP register.
       assert(StackTop == 1 && FirstFPRegOp == getStackEntry(0) &&
              "Top of stack not the right register for RET!");
-      
+
       // Ok, everything is good, mark the value as not being on the stack
       // anymore so that our assertion about the stack being empty at end of
       // block doesn't fire.
       StackTop = 0;
       return;
     }
-    
+
     // Otherwise, we are returning two values:
     // 2) If returning the same value for both, we only have one thing in the FP
     //    stack.  Consider:  RET FP1, FP1
     if (StackTop == 1) {
       assert(FirstFPRegOp == SecondFPRegOp && FirstFPRegOp == getStackEntry(0)&&
              "Stack misconfiguration for RET!");
-      
+
       // Duplicate the TOS so that we return it twice.  Just pick some other FPx
       // register to hold it.
       unsigned NewReg = getScratchReg();
       duplicateToTop(FirstFPRegOp, NewReg, MI);
       FirstFPRegOp = NewReg;
     }
-    
+
     /// Okay we know we have two different FPx operands now:
     assert(StackTop == 2 && "Must have two values live!");
-    
+
     /// 3) If SecondFPRegOp is currently in ST(0) and FirstFPRegOp is currently
     ///    in ST(1).  In this case, emit an fxch.
     if (getStackEntry(0) == SecondFPRegOp) {
       assert(getStackEntry(1) == FirstFPRegOp && "Unknown regs live");
       moveToTop(FirstFPRegOp, MI);
     }
-    
+
     /// 4) Finally, FirstFPRegOp must be in ST(0) and SecondFPRegOp must be in
     /// ST(1).  Just remove both from our understanding of the stack and return.
     assert(getStackEntry(0) == FirstFPRegOp && "Unknown regs live");

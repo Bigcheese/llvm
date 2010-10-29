@@ -35,10 +35,10 @@ unsigned char X86Subtarget::
 ClassifyBlockAddressReference() const {
   if (isPICStyleGOT())    // 32-bit ELF targets.
     return X86II::MO_GOTOFF;
-  
+
   if (isPICStyleStubPIC())   // Darwin/32 in PIC mode.
     return X86II::MO_PIC_BASE_OFFSET;
-  
+
   // Direct static reference to label.
   return X86II::MO_NO_FLAG;
 }
@@ -65,7 +65,7 @@ ClassifyGlobalReference(const GlobalValue *GV, const TargetMachine &TM) const {
     // Large model never uses stubs.
     if (TM.getCodeModel() == CodeModel::Large)
       return X86II::MO_NO_FLAG;
-      
+
     if (isTargetDarwin()) {
       // If symbol visibility is hidden, the extra load is not needed if
       // target is x86-64 or the symbol is definitely defined in the current
@@ -83,18 +83,18 @@ ClassifyGlobalReference(const GlobalValue *GV, const TargetMachine &TM) const {
 
     return X86II::MO_NO_FLAG;
   }
-  
+
   if (isPICStyleGOT()) {   // 32-bit ELF targets.
     // Extra load is needed for all externally visible.
     if (GV->hasLocalLinkage() || GV->hasHiddenVisibility())
       return X86II::MO_GOTOFF;
     return X86II::MO_GOT;
   }
-  
+
   if (isPICStyleStubPIC()) {  // Darwin/32 in PIC mode.
     // Determine whether we have a stub reference and/or whether the reference
     // is relative to the PIC base or not.
-    
+
     // If this is a strong reference to a definition, it is definitely not
     // through a stub.
     if (!isDecl && !GV->isWeakForLinker())
@@ -104,26 +104,26 @@ ClassifyGlobalReference(const GlobalValue *GV, const TargetMachine &TM) const {
     // normal $non_lazy_ptr stub because this symbol might be resolved late.
     if (!GV->hasHiddenVisibility())  // Non-hidden $non_lazy_ptr reference.
       return X86II::MO_DARWIN_NONLAZY_PIC_BASE;
-    
+
     // If symbol visibility is hidden, we have a stub for common symbol
     // references and external declarations.
     if (isDecl || GV->hasCommonLinkage()) {
       // Hidden $non_lazy_ptr reference.
       return X86II::MO_DARWIN_HIDDEN_NONLAZY_PIC_BASE;
     }
-    
+
     // Otherwise, no stub.
     return X86II::MO_PIC_BASE_OFFSET;
   }
-  
+
   if (isPICStyleStubNoDynamic()) {  // Darwin/32 in -mdynamic-no-pic mode.
     // Determine whether we have a stub reference.
-    
+
     // If this is a strong reference to a definition, it is definitely not
     // through a stub.
     if (!isDecl && !GV->isWeakForLinker())
       return X86II::MO_NO_FLAG;
-    
+
     // Unless we have a symbol with hidden visibility, we have to go through a
     // normal $non_lazy_ptr stub because this symbol might be resolved late.
     if (!GV->hasHiddenVisibility())  // Non-hidden $non_lazy_ptr reference.
@@ -132,7 +132,7 @@ ClassifyGlobalReference(const GlobalValue *GV, const TargetMachine &TM) const {
     // Otherwise, no stub.
     return X86II::MO_NO_FLAG;
   }
-  
+
   // Direct static reference to global.
   return X86II::MO_NO_FLAG;
 }
@@ -242,12 +242,12 @@ void X86Subtarget::AutoDetectSubtargetFeatures() {
     unsigned u[3];
     char     c[12];
   } text;
-  
+
   if (GetCpuIDAndInfo(0, &EAX, text.u+0, text.u+2, text.u+1))
     return;
 
   GetCpuIDAndInfo(0x1, &EAX, &EBX, &ECX, &EDX);
-  
+
   if ((EDX >> 15) & 1) HasCMov = true;
   if ((EDX >> 23) & 1) X86SSELevel = MMX;
   if ((EDX >> 25) & 1) X86SSELevel = SSE1;
@@ -283,7 +283,7 @@ void X86Subtarget::AutoDetectSubtargetFeatures() {
   }
 }
 
-X86Subtarget::X86Subtarget(const std::string &TT, const std::string &FS, 
+X86Subtarget::X86Subtarget(const std::string &TT, const std::string &FS,
                            bool is64Bit)
   : PICStyle(PICStyles::None)
   , X86SSELevel(NoMMXSSE)
@@ -309,13 +309,13 @@ X86Subtarget::X86Subtarget(const std::string &TT, const std::string &FS,
   // default to hard float ABI
   if (FloatABIType == FloatABI::Default)
     FloatABIType = FloatABI::Hard;
-    
+
   // Determine default and user specified characteristics
   if (!FS.empty()) {
     // If feature string is not empty, parse features string.
     std::string CPU = sys::getHostCPUName();
     ParseSubtargetFeatures(FS, CPU);
-    // All X86-64 CPUs also have SSE2, however user might request no SSE via 
+    // All X86-64 CPUs also have SSE2, however user might request no SSE via
     // -mattr, so don't force SSELevel here.
     if (HasAVX)
       X86SSELevel = NoMMXSSE;
@@ -335,7 +335,7 @@ X86Subtarget::X86Subtarget(const std::string &TT, const std::string &FS,
     // All 64-bit cpus have cmov support.
     HasCMov = true;
   }
-    
+
   DEBUG(dbgs() << "Subtarget features: SSELevel " << X86SSELevel
                << ", 3DNowLevel " << X863DNowLevel
                << ", 64bit " << HasX86_64 << "\n");

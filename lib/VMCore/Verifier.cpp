@@ -87,7 +87,7 @@ namespace {  // Anonymous namespace for class
 
       for (Function::iterator I = F.begin(), E = F.end(); I != E; ++I) {
         if (I->empty() || !I->back().isTerminator()) {
-          dbgs() << "Basic Block in function '" << F.getName() 
+          dbgs() << "Basic Block in function '" << F.getName()
                  << "' does not have terminator!\n";
           WriteAsOperand(dbgs(), I, true);
           dbgs() << "\n";
@@ -104,7 +104,7 @@ namespace {  // Anonymous namespace for class
 }
 
 char PreVerifier::ID = 0;
-INITIALIZE_PASS(PreVerifier, "preverify", "Preliminary module verification", 
+INITIALIZE_PASS(PreVerifier, "preverify", "Preliminary module verification",
                 false, false)
 static char &PreVerifyID = PreVerifier::ID;
 
@@ -184,13 +184,13 @@ namespace {
     SmallPtrSet<MDNode *, 32> MDNodes;
 
     Verifier()
-      : FunctionPass(ID), 
+      : FunctionPass(ID),
       Broken(false), RealPass(true), action(AbortProcessAction),
       Mod(0), Context(0), DT(0), MessagesStr(Messages) {
         initializeVerifierPass(*PassRegistry::getPassRegistry());
       }
     explicit Verifier(VerifierFailureAction ctn)
-      : FunctionPass(ID), 
+      : FunctionPass(ID),
       Broken(false), RealPass(true), action(ctn), Mod(0), Context(0), DT(0),
       MessagesStr(Messages) {
         initializeVerifierPass(*PassRegistry::getPassRegistry());
@@ -237,11 +237,11 @@ namespace {
         if (I->isDeclaration()) visitFunction(*I);
       }
 
-      for (Module::global_iterator I = M.global_begin(), E = M.global_end(); 
+      for (Module::global_iterator I = M.global_begin(), E = M.global_end();
            I != E; ++I)
         visitGlobalVariable(*I);
 
-      for (Module::alias_iterator I = M.alias_begin(), E = M.alias_end(); 
+      for (Module::alias_iterator I = M.alias_begin(), E = M.alias_end();
            I != E; ++I)
         visitGlobalAlias(*I);
 
@@ -487,7 +487,7 @@ void Verifier::visitGlobalAlias(GlobalAlias &GA) {
 
   if (!isa<GlobalValue>(GA.getAliasee())) {
     const ConstantExpr *CE = dyn_cast<ConstantExpr>(GA.getAliasee());
-    Assert1(CE && 
+    Assert1(CE &&
             (CE->getOpcode() == Instruction::BitCast ||
              CE->getOpcode() == Instruction::GetElementPtr) &&
             isa<GlobalValue>(CE->getOperand(0)),
@@ -648,7 +648,7 @@ static bool VerifyAttributeCount(const AttrListPtr &Attrs, unsigned Params) {
   unsigned LastIndex = Attrs.getSlot(LastSlot).Index;
   if (LastIndex <= Params
       || (LastIndex == (unsigned)~0
-          && (LastSlot == 0 || Attrs.getSlot(LastSlot - 1).Index <= Params)))  
+          && (LastSlot == 0 || Attrs.getSlot(LastSlot - 1).Index <= Params)))
     return true;
 
   return false;
@@ -669,7 +669,7 @@ void Verifier::visitFunction(Function &F) {
           "# formal arguments must match # of arguments for function type!",
           &F, FT);
   Assert1(F.getReturnType()->isFirstClassType() ||
-          F.getReturnType()->isVoidTy() || 
+          F.getReturnType()->isVoidTy() ||
           F.getReturnType()->isStructTy(),
           "Functions cannot return aggregate values!", &F);
 
@@ -694,6 +694,7 @@ void Verifier::visitFunction(Function &F) {
   case CallingConv::Cold:
   case CallingConv::X86_FastCall:
   case CallingConv::X86_ThisCall:
+  case CallingConv::X86_ftol2Call:
   case CallingConv::PTX_Kernel:
   case CallingConv::PTX_Device:
     Assert1(!F.isVarArg(),
@@ -728,25 +729,25 @@ void Verifier::visitFunction(Function &F) {
     // Verify that this function (which has a body) is not named "llvm.*".  It
     // is not legal to define intrinsics.
     Assert1(!isLLVMdotName, "llvm intrinsics cannot be defined!", &F);
-    
+
     // Check the entry node
     BasicBlock *Entry = &F.getEntryBlock();
     Assert1(pred_begin(Entry) == pred_end(Entry),
             "Entry block to function must not have predecessors!", Entry);
-    
+
     // The address of the entry block cannot be taken, unless it is dead.
     if (Entry->hasAddressTaken()) {
       Assert1(!BlockAddress::get(Entry)->isConstantUsed(),
               "blockaddress may not be used with the entry block!", Entry);
     }
   }
- 
+
   // If this function is actually an intrinsic, verify that it is only used in
   // direct call/invokes, never having its "address taken".
   if (F.getIntrinsicID()) {
     const User *U;
     if (F.hasAddressTaken(&U))
-      Assert1(0, "Invalid user of intrinsic instruction!", U); 
+      Assert1(0, "Invalid user of intrinsic instruction!", U);
   }
 }
 
@@ -821,7 +822,7 @@ void Verifier::visitBranchInst(BranchInst &BI) {
 void Verifier::visitReturnInst(ReturnInst &RI) {
   Function *F = RI.getParent()->getParent();
   unsigned N = RI.getNumOperands();
-  if (F->getReturnType()->isVoidTy()) 
+  if (F->getReturnType()->isVoidTy())
     Assert2(N == 0,
             "Found return instr that returns non-void in Function of void "
             "return type!", &RI, F->getReturnType());
@@ -1131,7 +1132,7 @@ void Verifier::visitPHINode(PHINode &PN) {
   // This can be tested by checking whether the instruction before this is
   // either nonexistent (because this is begin()) or is a PHI node.  If not,
   // then there is some other instruction before a PHI.
-  Assert2(&PN == &PN.getParent()->front() || 
+  Assert2(&PN == &PN.getParent()->front() ||
           isa<PHINode>(--BasicBlock::iterator(&PN)),
           "PHI nodes not grouped at top of basic block!",
           &PN, PN.getParent());
@@ -1372,7 +1373,7 @@ void Verifier::visitStoreInst(StoreInst &SI) {
 
 void Verifier::visitAllocaInst(AllocaInst &AI) {
   const PointerType *PTy = AI.getType();
-  Assert1(PTy->getAddressSpace() == 0, 
+  Assert1(PTy->getAddressSpace() == 0,
           "Allocation instruction pointer not in the generic address space!",
           &AI);
   Assert1(PTy->getElementType()->isSized(), "Cannot allocate unsized type",
@@ -1387,7 +1388,7 @@ void Verifier::visitExtractValueInst(ExtractValueInst &EVI) {
                                            EVI.idx_begin(), EVI.idx_end()) ==
           EVI.getType(),
           "Invalid ExtractValueInst operands!", &EVI);
-  
+
   visitInstruction(EVI);
 }
 
@@ -1396,7 +1397,7 @@ void Verifier::visitInsertValueInst(InsertValueInst &IVI) {
                                            IVI.idx_begin(), IVI.idx_end()) ==
           IVI.getOperand(1)->getType(),
           "Invalid InsertValueInst operands!", &IVI);
-  
+
   visitInstruction(IVI);
 }
 
@@ -1419,7 +1420,7 @@ void Verifier::visitInstruction(Instruction &I) {
 
   // Check that the return value of the instruction is either void or a legal
   // value type.
-  Assert1(I.getType()->isVoidTy() || 
+  Assert1(I.getType()->isVoidTy() ||
           I.getType()->isFirstClassType(),
           "Instruction returns a non-scalar type!", &I);
 
@@ -1859,7 +1860,7 @@ bool Verifier::PerformTypeCheck(Intrinsic::ID ID, Function *F, const Type *Ty,
                   "vector elements!", F);
       return false;
     }
-  } else if (EVT((MVT::SimpleValueType)VT).getTypeForEVT(Ty->getContext()) != 
+  } else if (EVT((MVT::SimpleValueType)VT).getTypeForEVT(Ty->getContext()) !=
              EltTy) {
     CheckFailed(IntrinsicParam(ArgNo, NumRetVals) + " is wrong!", F);
     return false;
@@ -1899,13 +1900,13 @@ void Verifier::VerifyIntrinsicPrototype(Intrinsic::ID ID, Function *F,
     CheckFailed("Intrinsic should return void", F);
     return;
   }
-  
+
   // Verify the return types.
   if (ST && ST->getNumElements() != NumRetVals) {
     CheckFailed("Intrinsic prototype has incorrect number of return types!", F);
     return;
   }
-  
+
   for (unsigned ArgNo = 0; ArgNo != NumRetVals; ++ArgNo) {
     int VT = va_arg(VA, int); // An MVT::SimpleValueType when non-negative.
 
