@@ -363,6 +363,8 @@ bool X86Subtarget::IsCalleePop(bool IsVarArg,
     return false;
   case CallingConv::X86_StdCall:
     return !is64Bit();
+  case CallingConv::X86_ftol2Call:
+    return !is64Bit();
   case CallingConv::X86_FastCall:
     return !is64Bit();
   case CallingConv::X86_ThisCall:

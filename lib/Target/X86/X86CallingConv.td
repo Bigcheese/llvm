@@ -330,6 +330,10 @@ def CC_X86_32_FastCall : CallingConv<[
   CCDelegateTo<CC_X86_32_Common>
 ]>;
 
+def CC_X86_32_ftol2Call : CallingConv<[
+  CCIfType<[f32, f64], CCAssignToReg<[FP0]>>
+]>;
+
 def CC_X86_32_ThisCall : CallingConv<[
   // Promote i8/i16 arguments to i32.
   CCIfType<[i8, i16], CCPromoteToType<i32>>,

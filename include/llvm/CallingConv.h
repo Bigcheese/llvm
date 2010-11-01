@@ -87,7 +87,12 @@ namespace CallingConv {
 
     /// PTX_Device - Call to a PTX device function.
     /// Passes all arguments in register or parameter space.
-    PTX_Device = 72
+    PTX_Device = 72,
+
+    /// X86_ftol2Call - This is the same as StdCall except that floating point
+    /// arguments are passed in the x87 fp stack. This is used when calling
+    /// __ftol2 in the Microsoft C Runtime.
+    X86_ftol2Call = 73
   };
 } // End CallingConv namespace
 
