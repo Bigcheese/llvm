@@ -17,6 +17,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "Windows.h"
+
 #include <malloc.h>
 #include <cstdio>
 
@@ -380,7 +381,7 @@ Path::isSymLink() const {
 
   if (attributes == INVALID_FILE_ATTRIBUTES)
     // There's no sane way to report this :(.
-    assert(0 && "GetFileAttributes returned INVALID_FILE_ATTRIBUTES");
+    report_fatal_error("GetFileAttributes returned INVALID_FILE_ATTRIBUTES");
 
   // This isn't exactly what defines a NTFS symlink, but it is only true for
   // paths that act like a symlink.
