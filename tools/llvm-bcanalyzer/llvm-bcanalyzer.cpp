@@ -58,7 +58,7 @@ static cl::opt<bool> NoHistogram("disable-histogram",
 
 static cl::opt<bool>
 NonSymbolic("non-symbolic",
-            cl::desc("Emit numberic info in dump even if"
+            cl::desc("Emit numeric info in dump even if"
                      " symbolic info is available"));
 
 namespace {
