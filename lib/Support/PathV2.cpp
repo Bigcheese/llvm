@@ -761,6 +761,14 @@ error_code directory_entry::status(file_status &result) const {
   return fs::status(Path, result);
 }
 
+error_code is_symlink(const Twine &path, bool &result) {
+  file_status st;
+  if (error_code ec = status(path, st))
+    return ec;
+  result = st.type() == file_type::symlink_file;
+  return success;
+}
+
 } // end namespace fs
 } // end namespace sys
 } // end namespace llvm
