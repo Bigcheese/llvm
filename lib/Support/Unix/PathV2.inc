@@ -96,7 +96,8 @@ namespace sys  {
 namespace fs {
 
 error_code current_path(SmallVectorImpl<char> &result) {
-  result.reserve(MAXPATHLEN);
+  // Reserve an arbitrary amount of space.
+  result.reserve(128);
 
   while (true) {
     if (::getcwd(result.data(), result.capacity()) == 0) {
@@ -423,18 +424,13 @@ rety_open_create:
   }
 
    // Make the path absolute.
-  char real_path_buff[PATH_MAX + 1];
-  if (realpath(RandomPath.c_str(), real_path_buff) == NULL) {
-    int error = errno;
+  if (error_code ec = make_absolute(RandomPath)) {
     ::close(RandomFD);
     ::unlink(RandomPath.c_str());
-    return error_code(error, system_category());
+    return ec;
   }
 
-  result_path.clear();
-  StringRef d(real_path_buff);
-  result_path.append(d.begin(), d.end());
-
+  result_path = RandomPath;
   result_fd = RandomFD;
   return success;
 }
