@@ -26,6 +26,12 @@
   " Clang clients have been moved over to PathV2. Please use `" #replacement \
   "` from PathV2 instead."
 
+#define LLVM_PATH_DEPRECATED_CONSTRUCTOR_MSG \
+  "PathV1 has been deprecated and will be removed as soon as all LLVM and" \
+  " Clang clients have been moved over to PathV2. PathV2 is stateless, so" \
+  " any r-value that is convertible to a Twine should replace uses of the" \
+  " Path class."
+
 namespace llvm {
 namespace sys {
 
@@ -170,15 +176,18 @@ namespace sys {
       /// provided so that they can be used to indicate null or error results in
       /// other lib/System functionality.
       /// @brief Construct an empty (and invalid) path.
-      Path() : path() {}
-      Path(const Path &that) : path(that.path) {}
+      LLVM_ATTRIBUTE_DEPRECATED(Path(), LLVM_PATH_DEPRECATED_CONSTRUCTOR_MSG)
+        : path() {}
+      LLVM_ATTRIBUTE_DEPRECATED(Path(const Path &that),
+        LLVM_PATH_DEPRECATED_CONSTRUCTOR_MSG) : path(that.path) {}
 
       /// This constructor will accept a char* or std::string as a path. No
       /// checking is done on this path to determine if it is valid. To
       /// determine validity of the path, use the isValid method.
       /// @param p The path to assign.
       /// @brief Construct a Path from a string.
-      explicit Path(StringRef p);
+      LLVM_ATTRIBUTE_DEPRECATED(explicit Path(StringRef p),
+        LLVM_PATH_DEPRECATED_CONSTRUCTOR_MSG);
 
       /// This constructor will accept a character range as a path.  No checking
       /// is done on this path to determine if it is valid.  To determine
@@ -186,7 +195,8 @@ namespace sys {
       /// @param StrStart A pointer to the first character of the path name
       /// @param StrLen The length of the path name at StrStart
       /// @brief Construct a Path from a string.
-      Path(const char *StrStart, unsigned StrLen);
+      LLVM_ATTRIBUTE_DEPRECATED(Path(const char *StrStart, unsigned StrLen),
+        LLVM_PATH_DEPRECATED_CONSTRUCTOR_MSG);
 
     /// @}
     /// @name Operators
