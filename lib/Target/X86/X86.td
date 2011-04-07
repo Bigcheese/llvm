@@ -83,6 +83,8 @@ def FeatureVectorUAMem : SubtargetFeature<"vector-unaligned-mem",
                  "Allow unaligned memory operands on vector/SIMD instructions">;
 def FeatureAES     : SubtargetFeature<"aes", "HasAES", "true",
                                       "Enable AES instructions">;
+def FeatureLWP     : SubtargetFeature<"lwp", "HasLWP", "true",
+                                   "Enable Lightweight Profiling instructions">;
 
 //===----------------------------------------------------------------------===//
 // X86 processors supported.

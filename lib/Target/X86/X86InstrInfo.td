@@ -1271,6 +1271,9 @@ include "X86Instr3DNow.td"
 
 include "X86InstrVMX.td"
 
+// LWP - Lightweight Profiling support.
+include "X86InstrLWP.td"
+
 // System instructions.
 include "X86InstrSystem.td"
 
