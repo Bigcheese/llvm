@@ -1645,3 +1645,21 @@ let TargetPrefix = "x86" in {  // All intrinsics start with "llvm.x86.".
               Intrinsic<[llvm_x86mmx_ty], [llvm_x86mmx_ty,
                         llvm_i32_ty, llvm_i32_ty], [IntrNoMem]>;
 }
+
+//===----------------------------------------------------------------------===//
+// LWP
+
+let TargetPrefix = "x86" in { // All intrinsics start with "llvm.x86.".
+  def int_x86_lwp_llwpcb : Intrinsic<[], [llvm_ptr_ty], []>;
+  def int_x86_lwp_slwpcb : Intrinsic<[llvm_ptr_ty], [], []>;
+
+  def int_x86_lwp_lwpins_32 :
+    Intrinsic<[llvm_i8_ty], [llvm_i32_ty, llvm_i32_ty, llvm_i32_ty], []>;
+  def int_x86_lwp_lwpins_64 :
+    Intrinsic<[llvm_i8_ty], [llvm_i64_ty, llvm_i32_ty, llvm_i32_ty], []>;
+
+  def int_x86_lwp_lwpval_32 :
+    Intrinsic<[], [llvm_i32_ty, llvm_i32_ty, llvm_i32_ty], []>;
+  def int_x86_lwp_lwpval_64 :
+    Intrinsic<[], [llvm_i64_ty, llvm_i32_ty, llvm_i32_ty], []>;
+}
