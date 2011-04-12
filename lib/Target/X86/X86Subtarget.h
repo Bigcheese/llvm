@@ -86,6 +86,9 @@ protected:
   /// HasFMA4 - Target has 4-operand fused multiply-add
   bool HasFMA4;
 
+  /// HasLWP - Target has Lightweight Profiling.
+  bool HasLWP;
+
   /// IsBTMemSlow - True if BT (bit test) of memory instructions are slow.
   bool IsBTMemSlow;
 

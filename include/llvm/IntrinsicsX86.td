@@ -1650,16 +1650,18 @@ let TargetPrefix = "x86" in {  // All intrinsics start with "llvm.x86.".
 // LWP
 
 let TargetPrefix = "x86" in { // All intrinsics start with "llvm.x86.".
-  def int_x86_lwp_llwpcb : Intrinsic<[], [llvm_ptr_ty], []>;
-  def int_x86_lwp_slwpcb : Intrinsic<[llvm_ptr_ty], [], []>;
+  def int_x86_lwp_llwpcb : GCCBuiltin<"__builtin_ia32_llwpcb">,
+    Intrinsic<[], [llvm_ptr_ty], []>;
+  def int_x86_lwp_slwpcb : GCCBuiltin<"__builtin_ia32_slwpcb">,
+    Intrinsic<[llvm_ptr_ty], [], []>;
 
-  def int_x86_lwp_lwpins_32 :
+  def int_x86_lwp_lwpins_32 : GCCBuiltin<"__builtin_ia32_lwpins32">,
     Intrinsic<[llvm_i8_ty], [llvm_i32_ty, llvm_i32_ty, llvm_i32_ty], []>;
-  def int_x86_lwp_lwpins_64 :
+  def int_x86_lwp_lwpins_64 : GCCBuiltin<"__builtin_ia32_lwpins64">,
     Intrinsic<[llvm_i8_ty], [llvm_i64_ty, llvm_i32_ty, llvm_i32_ty], []>;
 
-  def int_x86_lwp_lwpval_32 :
+  def int_x86_lwp_lwpval_32 : GCCBuiltin<"__builtin_ia32_lwpval32">,
     Intrinsic<[], [llvm_i32_ty, llvm_i32_ty, llvm_i32_ty], []>;
-  def int_x86_lwp_lwpval_64 :
+  def int_x86_lwp_lwpval_64 : GCCBuiltin<"__builtin_ia32_lwpval64">,
     Intrinsic<[], [llvm_i64_ty, llvm_i32_ty, llvm_i32_ty], []>;
 }
