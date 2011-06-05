@@ -14,12 +14,13 @@
 #ifndef LLVM_OBJECT_ARCHIVE_H
 #define LLVM_OBJECT_ARCHIVE_H
 
-#include "llvm/Object/ObjectFile.h"
+#include "llvm/Object/Binary.h"
+#include "llvm/ADT/StringRef.h"
 
 namespace llvm {
 namespace object {
 
-class Archive : public ObjectFile {
+class Archive : public Binary {
 public:
   class Child {
     Archive *Parent;
@@ -41,7 +42,7 @@ public:
     ///! Return the size of the archive member without the header or padding.
     size_t getSize() const;
 
-    ObjectFile *getAsObjectFile() const;
+    Binary *getAsBinary() const;
   };
 
   class child_iterator {
@@ -66,11 +67,17 @@ public:
     }
   };
 
-
   Archive(MemoryBuffer *source);
 
   child_iterator begin_children();
   child_iterator end_children();
+
+  // Cast methods.
+  static inline bool classof(Archive const *v) { return true; }
+  static inline bool classof(Binary const *v) {
+    return v->getType() == Binary::isArchive;
+  }
+
 private:
   child_iterator StringTable;
 };

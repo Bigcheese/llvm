@@ -48,8 +48,8 @@ struct ArchiveMemberHeader {
   }
 };
 
-ArchiveMemberHeader *ToHeader(const char *base) {
-  reinterpret_cast<const ArchiveMemberHeader *>(base);
+const ArchiveMemberHeader *ToHeader(const char *base) {
+  return reinterpret_cast<const ArchiveMemberHeader *>(base);
 }
 }
 
@@ -63,7 +63,7 @@ Archive::Child Archive::Child::getNext() const {
   const char *NextLoc = Data.data() + SpaceToSkip;
 
   // Check to see if this is past the end of the archive.
-  if (NextLoc >= Parent->MapFile->getBufferEnd())
+  if (NextLoc >= Parent->Data->getBufferEnd())
     return Child(Parent, StringRef(0, 0));
 
   size_t NextSize = sizeof(ArchiveMemberHeader) +
@@ -95,7 +95,7 @@ StringRef Archive::Child::getName() const {
 }
 
 Archive::Archive(MemoryBuffer *source)
-  : ObjectFile(source)
+  : Binary(Binary::isArchive, source)
   , StringTable(Child(this, StringRef(0, 0))) {
   // Get the string table. It's the 3rd member.
   child_iterator StrTable = begin_children();
@@ -110,7 +110,7 @@ Archive::Archive(MemoryBuffer *source)
 }
 
 Archive::child_iterator Archive::begin_children() {
-  const char *Loc = reinterpret_cast<const char *>(base) + Magic.size();
+  const char *Loc = Data->getBufferStart() + Magic.size();
   size_t Size = sizeof(ArchiveMemberHeader) +
     ToHeader(Loc)->getSize();
   return Child(this, StringRef(Loc, Size));
