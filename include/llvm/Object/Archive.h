@@ -67,7 +67,7 @@ public:
     }
   };
 
-  Archive(MemoryBuffer *source);
+  Archive(MemoryBuffer *source, error_code ec);
 
   child_iterator begin_children();
   child_iterator end_children();

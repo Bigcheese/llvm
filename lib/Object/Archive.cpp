@@ -94,19 +94,31 @@ StringRef Archive::Child::getName() const {
   return name;
 }
 
-Archive::Archive(MemoryBuffer *source)
+Archive::Archive(MemoryBuffer *source, error_code ec)
   : Binary(Binary::isArchive, source)
   , StringTable(Child(this, StringRef(0, 0))) {
+  // Check for sufficient magic.
+  if (!source || source->getBufferSize()
+                 < (8 + sizeof(ArchiveMemberHeader) + 2) // Smallest archive.
+              || StringRef(source->getBufferStart(), 8) != Magic) {
+    ec = object_error::invalid_file_type;
+    return;
+  }
+
   // Get the string table. It's the 3rd member.
   child_iterator StrTable = begin_children();
   child_iterator e = end_children();
   for (int i = 0; StrTable != e && i < 3; ++StrTable, ++i);
 
   // Check to see if there were 3 members, or the 3rd member wasn't named "//".
-  if (StrTable == e || StrTable->getName() != "//")
-    assert("Invalid archive! Also, this shouldn't be an assert...");
+  if (StrTable == e || StrTable->getName() != "//") {
+    ec = object_error::invalid_file_type;
+    return;
+  }
 
   StringTable = StrTable;
+
+  ec = object_error::success;
 }
 
 Archive::child_iterator Archive::begin_children() {
