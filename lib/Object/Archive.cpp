@@ -94,7 +94,7 @@ StringRef Archive::Child::getName() const {
   return name;
 }
 
-Archive::Archive(MemoryBuffer *source, error_code ec)
+Archive::Archive(MemoryBuffer *source, error_code &ec)
   : Binary(Binary::isArchive, source)
   , StringTable(Child(this, StringRef(0, 0))) {
   // Check for sufficient magic.
