@@ -48,7 +48,7 @@ public:
   class child_iterator {
     Child child;
   public:
-    child_iterator(Child &c) : child(c) {}
+    child_iterator(const Child &c) : child(c) {}
     const Child* operator->() const {
       return &child;
     }
