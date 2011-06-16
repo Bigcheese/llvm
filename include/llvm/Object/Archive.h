@@ -16,6 +16,7 @@
 
 #include "llvm/Object/Binary.h"
 #include "llvm/ADT/StringRef.h"
+#include "llvm/Support/DataTypes.h"
 
 namespace llvm {
 namespace object {
@@ -34,15 +35,16 @@ public:
     }
 
     Child getNext() const;
-    StringRef getName() const;
+    error_code getName(StringRef &Result) const;
     int getLastModified() const;
     int getUID() const;
     int getGID() const;
     int getAccessMode() const;
     ///! Return the size of the archive member without the header or padding.
-    size_t getSize() const;
+    uint64_t getSize() const;
 
-    Binary *getAsBinary() const;
+    MemoryBuffer *getBuffer() const;
+    error_code getAsBinary(OwningPtr<Binary> &Result) const;
   };
 
   class child_iterator {

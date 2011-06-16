@@ -33,18 +33,18 @@ struct ArchiveMemberHeader {
   ///! Get the name without looking up long names.
   StringRef getName() const {
     char EndCond = Name[0] == '/' ? ' ' : '/';
-    StringRef::size_type end = StringRef(Name, 16).find(EndCond);
+    StringRef::size_type end = StringRef(Name, sizeof(Name)).find(EndCond);
     if (end == StringRef::npos)
-      end = 16;
-    assert(end <= 16 && end > 0);
+      end = sizeof(Name);
+    assert(end <= sizeof(Name) && end > 0);
     // Don't include the EndCond if there is one.
     return StringRef(Name, end);
   }
 
-  size_t getSize() const {
-    size_t ret;
+  uint64_t getSize() const {
+    APInt ret;
     StringRef(Size, sizeof(Size)).getAsInteger(10, ret);
-    return ret;
+    return ret.getZExtValue();
   }
 };
 
@@ -72,26 +72,64 @@ Archive::Child Archive::Child::getNext() const {
   return Child(Parent, StringRef(NextLoc, NextSize));
 }
 
-StringRef Archive::Child::getName() const {
+error_code Archive::Child::getName(StringRef &Result) const {
   StringRef name = ToHeader(Data.data())->getName();
   // Check if it's a special name.
   if (name[0] == '/') {
-    if (name.size() == 1) return name; // Linker member.
-    if (name.size() == 2 && name[1] == '/') return name; // String table.
+    if (name.size() == 1) { // Linker member.
+      Result = name;
+      return object_error::success;
+    }
+    if (name.size() == 2 && name[1] == '/') { // String table.
+      Result = name;
+      return object_error::success;
+    }
     // It's a long name.
-    size_t offset;
+    // Get the offset.
+    APInt offset;
     name.substr(1).getAsInteger(10, offset);
-    // FIXME: Check that the end of the string is within the file. This isn't
-    //        an issue at the moment because MemoryBuffer is null-terminated,
-    //        but it's bad to rely on that.
-    return StringRef(Parent->StringTable->Data.begin()
-                     + sizeof(ArchiveMemberHeader)
-                     + offset);
+    const char *addr = Parent->StringTable->Data.begin()
+                       + sizeof(ArchiveMemberHeader)
+                       + offset.getZExtValue();
+    // Verify it.
+    if (Parent->StringTable == Parent->end_children()
+        || addr < (Parent->StringTable->Data.begin()
+                   + sizeof(ArchiveMemberHeader))
+        || addr > (Parent->StringTable->Data.begin()
+                   + sizeof(ArchiveMemberHeader)
+                   + Parent->StringTable->getSize()))
+      return object_error::parse_failed;
+    Result = addr;
+    return object_error::success;
   }
   // It's a simple name.
   if (name[name.size() - 1] == '/')
-    return name.substr(0, name.size() - 1);
-  return name;
+    Result = name.substr(0, name.size() - 1);
+  else
+    Result = name;
+  return object_error::success;
+}
+
+uint64_t Archive::Child::getSize() const {
+  return ToHeader(Data.data())->getSize();
+}
+
+MemoryBuffer *Archive::Child::getBuffer() const {
+  StringRef name;
+  if (getName(name)) return NULL;
+  return MemoryBuffer::getMemBuffer(Data.substr(sizeof(ArchiveMemberHeader),
+                                                getSize()),
+                                    name,
+                                    false);
+}
+
+error_code Archive::Child::getAsBinary(OwningPtr<Binary> &Result) const {
+  OwningPtr<Binary> ret;
+  if (error_code ec =
+    createBinary(getBuffer(), ret))
+    return ec;
+  Result.swap(ret);
+  return object_error::success;
 }
 
 Archive::Archive(MemoryBuffer *source, error_code &ec)
@@ -108,15 +146,12 @@ Archive::Archive(MemoryBuffer *source, error_code &ec)
   // Get the string table. It's the 3rd member.
   child_iterator StrTable = begin_children();
   child_iterator e = end_children();
-  for (int i = 0; StrTable != e && i < 3; ++StrTable, ++i);
+  for (int i = 0; StrTable != e && i < 2; ++StrTable, ++i);
 
   // Check to see if there were 3 members, or the 3rd member wasn't named "//".
-  if (StrTable == e || StrTable->getName() != "//") {
-    ec = object_error::invalid_file_type;
-    return;
-  }
-
-  StringTable = StrTable;
+  StringRef name;
+  if (StrTable != e && !StrTable->getName(name) && name == "//")
+    StringTable = StrTable;
 
   ec = object_error::success;
 }
