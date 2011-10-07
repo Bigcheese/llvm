@@ -725,7 +725,7 @@ relocation_iterator ELFObjectFile<target_endianness, is64Bits>
   DataRefImpl RelData;
   memset(&RelData, 0, sizeof(RelData));
   const Elf_Shdr *sec = reinterpret_cast<const Elf_Shdr *>(Sec.p);
-  RelocMap_t::const_iterator ittr = SectionRelocMap.find(sec);
+  typename RelocMap_t::const_iterator ittr = SectionRelocMap.find(sec);
   if (sec != 0 && ittr != SectionRelocMap.end()) {
     RelData.w.a = getSection(ittr->second[0])->sh_link;
     RelData.w.b = ittr->second[0];
@@ -740,7 +740,7 @@ relocation_iterator ELFObjectFile<target_endianness, is64Bits>
   DataRefImpl RelData;
   memset(&RelData, 0, sizeof(RelData));
   const Elf_Shdr *sec = reinterpret_cast<const Elf_Shdr *>(Sec.p);
-  RelocMap_t::const_iterator ittr = SectionRelocMap.find(sec);
+  typename RelocMap_t::const_iterator ittr = SectionRelocMap.find(sec);
   if (sec != 0 && ittr != SectionRelocMap.end()) {
     // Get the index of the last relocation section for this section.
     std::size_t relocsecindex = ittr->second[ittr->second.size() - 1];
@@ -762,12 +762,12 @@ error_code ELFObjectFile<target_endianness, is64Bits>
   if (Rel.w.c >= (relocsec->sh_size / relocsec->sh_entsize)) {
     // We have reached the end of the relocations for this section. See if there
     // is another relocation section.
-    RelocMap_t::mapped_type &relocseclist =
+    typename RelocMap_t::mapped_type &relocseclist =
       SectionRelocMap.lookup(getSection(Rel.w.a));
 
     // Do a binary search for the current reloc section index (which must be
     // present). Then get the next one.
-    RelocMap_t::mapped_type::const_iterator loc =
+    typename RelocMap_t::mapped_type::const_iterator loc =
       std::lower_bound(relocseclist.begin(), relocseclist.end(), Rel.w.b);
     ++loc;
 
@@ -1078,8 +1078,8 @@ ELFObjectFile<target_endianness, is64Bits>::ELFObjectFile(MemoryBuffer *Object
   }
 
   // Sort section relocation lists by index.
-  for (RelocMap_t::iterator i = SectionRelocMap.begin(),
-                            e = SectionRelocMap.end(); i != e; ++i) {
+  for (typename RelocMap_t::iterator i = SectionRelocMap.begin(),
+                                     e = SectionRelocMap.end(); i != e; ++i) {
     std::sort(i->second.begin(), i->second.end());
   }
 
