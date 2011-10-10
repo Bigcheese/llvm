@@ -44,6 +44,9 @@
 #include "llvm/Support/system_error.h"
 #include <algorithm>
 #include <cstring>
+#include <iomanip>
+#include <iostream>
+#include <limits>
 using namespace llvm;
 using namespace object;
 
@@ -61,6 +64,9 @@ static cl::opt<bool>
 Relocations("r", cl::desc("Display the relocation entries in the file"));
 
 static cl::opt<bool>
+Sections("h", cl::desc("Display the sections in the file"));
+
+static cl::opt<bool>
 MachO("macho", cl::desc("Use MachO specific object file parser"));
 static cl::alias
 MachOm("m", cl::desc("Alias for --macho"), cl::aliasopt(MachO));
@@ -74,6 +80,18 @@ llvm::ArchName("arch", cl::desc("Target arch to disassemble for, "
                                 "see -version for available targets"));
 
 static StringRef ToolName;
+
+template<typename T>
+static int binary_log(T val) {
+  if (val == 0)
+    return -1;
+
+  int ret = 0;
+  while (val >>= 1) {
+    ++ret;
+  }
+  return ret;
+}
 
 static bool error(error_code ec) {
   if (!ec) return false;
@@ -140,10 +158,6 @@ static void DisassembleObject(const ObjectFile *Obj) {
     // GetTarget prints out stuff.
     return;
   }
-
-  outs() << '\n';
-  outs() << Obj->getFileName()
-         << ":\tfile format " << Obj->getFileFormatName() << "\n\n";
 
   error_code ec;
   for (section_iterator i = Obj->begin_sections(),
@@ -281,7 +295,57 @@ static void PrintRelocations(const ObjectFile *o) {
   }
 }
 
+static void PrintSections(const ObjectFile *o) {
+  int bw = o->getBytesInAddress() * 2;
+  std::cout << "Sections:\n";
+  std::cout << std::left
+            << "Idx "
+            << std::setw(14) << "Name"
+            << std::setw(10) << "Size"
+            << std::setw(2 + bw) << "VMA"
+            << std::setw(2 + bw) << "LMA"
+            << std::setw(10) << "File off"
+            << "Algn\n";
+  int idx = 0;
+  error_code ec;
+  for (section_iterator i = o->begin_sections(),
+                        e = o->end_sections(); i != e; i.increment(ec), ++idx) {
+    if (error(ec)) return;
+    StringRef name;
+    StringRef section_content;
+    uint64_t size;
+    uint64_t vma = 0;
+    uint64_t lma = 0;
+    uint64_t file_offset = 0;
+    uint64_t align = 0;
+    if (error(i->getName(name))) continue;
+    if (error(i->getSize(size))) continue;
+    if (error(i->getAlignment(align))) continue;
+    align = binary_log(align);
+    if (error(i->getContents(section_content))) continue;
+    file_offset = section_content.begin() - o->getData().begin();
+    std::cout << std::right << std::setfill(' ')
+              << std::setw(3) << idx << " "
+              << std::left << std::setw(14) << name.str()
+              << std::right << std::hex << std::setfill('0')
+              << std::setw(8) << size << "  "
+              << std::setw(bw) << vma << "  "
+              << std::setw(bw) << lma << "  "
+              << std::setw(8) << file_offset << "  "
+              << std::left << std::dec << std::setfill(' ') << "2**" << align
+              << "\n";
+  }
+  std::cout << "\n";
+}
+
 static void DumpObject(const ObjectFile *o) {
+
+  std::cout << "\n"
+            << o->getFileName().str() << ":     file format "
+            << o->getFileFormatName().str() << "\n\n";
+
+  if (Sections)
+    PrintSections(o);
   if (Disassemble)
     DisassembleObject(o);
   if (Relocations)
@@ -356,13 +420,12 @@ int main(int argc, char **argv) {
   if (InputFilenames.size() == 0)
     InputFilenames.push_back("a.out");
 
-  if (!Disassemble && !Relocations) {
+  if (!Disassemble && !Relocations && !Sections) {
     cl::PrintHelpMessage();
     return 2;
   }
 
-  std::for_each(InputFilenames.begin(), InputFilenames.end(),
-                DumpInput);
+  std::for_each(InputFilenames.begin(), InputFilenames.end(), DumpInput);
 
   return 0;
 }
