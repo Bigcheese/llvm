@@ -31,6 +31,7 @@ add_subdirectory(llvm-ld)
 add_subdirectory(llvm-prof)
 add_subdirectory(llvm-link)
 add_subdirectory(lli)
+add_subdirectory(lold)
 
 add_subdirectory(llvm-extract)
 add_subdirectory(llvm-diff)
