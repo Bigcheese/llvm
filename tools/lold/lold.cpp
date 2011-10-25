@@ -77,9 +77,9 @@ public:
   }
 };
 
-std::vector<AtomRef> Symbtab;
+static std::vector<AtomRef> Symbtab;
 
-void ProcessInput(StringRef file, uint32_t priority) {
+static void ProcessInput(StringRef file, uint32_t priority) {
   if (!sys::fs::exists(file)) {
     errs() << ToolName << ": '" << file << "': " << "No such file\n";
     return;
@@ -93,6 +93,7 @@ void ProcessInput(StringRef file, uint32_t priority) {
   }
 
   if (Archive *a = dyn_cast<Archive>(binary.get())) {
+    uint32_t obj_priority = 0;
     error_code ec;
     for (Archive::symbol_iterator i = a->begin_symbols(),
                                   e = a->end_symbols(); i != e; ++i) {
@@ -107,7 +108,7 @@ void ProcessInput(StringRef file, uint32_t priority) {
       ar.Path = a->getFileName();
       ar.Path += '/';
       ar.Path += child_name;
-      ar.Priority = priority << 16;
+      ar.Priority = (priority << 16) | obj_priority++;
       Symbtab.push_back(ar);
     }
   } else if (ObjectFile *o = dyn_cast<ObjectFile>(binary.get())) {
