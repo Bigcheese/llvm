@@ -68,7 +68,7 @@ public:
   std::string Path;
   Atom *Instance;
 
-  bool operator <(const AtomRef &other) {
+  bool operator <(const AtomRef &other) const {
     if (Name < other.Name)
       return true;
     else if (Name == other.Name && Priority < other.Priority)
