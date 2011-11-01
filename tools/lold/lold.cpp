@@ -13,6 +13,7 @@
 
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Object/Archive.h"
+#include "llvm/Object/COFF.h"
 #include "llvm/Object/ObjectFile.h"
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/CommandLine.h"
@@ -48,13 +49,118 @@ class Atom {
 public:
   virtual ~Atom() {}
 
+  bool Defined;
+  StringRef Contents;
+  StringRef Name;
   std::vector<Link> Links;
 };
 
 class Link {
 public:
+  std::vector<Atom*> Operands;
+  enum {
+    LT_Reloc,
+    LT_FollowsFromConstraint
+  } Type;
+  union {
+    uint32_t ConstraintDistance;
+    uint64_t RelocInfo;
+  };
   virtual ~Link() {}
 };
+
+class Module {
+public:
+  OwningPtr<Binary> binary;
+  std::vector<Atom> Atoms;
+};
+
+static bool SortOffset(const SymbolRef &a, const SymbolRef &b) {
+  uint64_t off_a, off_b;
+  if (error(a.getOffset(off_a))) return false;
+  if (error(b.getOffset(off_b))) return false;
+  return off_a < off_b;
+}
+
+static Module *getCOFFModule(StringRef file) {
+  Module *m = new Module;
+  if (!sys::fs::exists(file)) {
+    errs() << ToolName << ": '" << file << "': " << "No such file\n";
+    return m;
+  }
+
+  // Attempt to open the binary.
+  if (error_code ec = createBinary(file, m->binary)) {
+    errs() << ToolName << ": '" << file << "': " << ec.message() << ".\n";
+    return m;
+  }
+
+  if (COFFObjectFile *o = dyn_cast<COFFObjectFile>(m->binary.get())) {
+    error_code ec;
+    for (section_iterator i = o->begin_sections(),
+                          e = o->end_sections();
+                          i != e; i.increment(ec)) {
+      if (error(ec)) break;
+      // Gather up the symbols this section defines.
+      std::vector<SymbolRef> Symbols;
+      for (symbol_iterator si = o->begin_symbols(),
+                           se = o->end_symbols();
+                           si != se; si.increment(ec)) {
+        bool contains;
+        if (!error(i->containsSymbol(*si, contains)) && contains) {
+          Symbols.push_back(*si);
+        }
+      }
+      // Sort by address.
+      std::stable_sort(Symbols.begin(), Symbols.end(), SortOffset);
+      // Create atoms by address range.
+      if (Symbols.size() <= 1) {
+        Atom a;
+        if (error(i->getContents(a.Contents))) return m;
+        a.Defined = true;
+        if (error(i->getName(a.Name))) return m;
+        m->Atoms.push_back(a);
+      } else {
+        StringRef Bytes;
+        if (error(i->getContents(Bytes))) break;
+        uint64_t Size;
+        uint64_t Index;
+        uint64_t SectSize;
+        if (error(i->getSize(SectSize))) break;
+
+        for (unsigned si = 0, se = Symbols.size(); si != se; ++si) {
+          uint64_t Start;
+          uint64_t End;
+          Symbols[si].getOffset(Start);
+          // The end is either the size of the section or the beginning of the next
+          // symbol.
+          if (si == se - 1)
+            End = SectSize;
+          else {
+            Symbols[si + 1].getOffset(End);
+            // Make sure this symbol takes up space.
+            if (End != Start)
+              --End;
+            else {
+              // Create empty atom?
+              StringRef name;
+              Symbols[si].getName(name);
+              errs() << name << " Empty atom!\n";
+            }
+          }
+          Atom a;
+          a.Contents = Bytes.substr(Start, Start - End);
+          a.Defined = true;
+          if (error(Symbols[si].getName(a.Name))) return m;
+          m->Atoms.push_back(a);
+        }
+      }
+    }
+  } else {
+    errs() << ToolName << ": '" << file << "': " << "Unrecognized file type.\n";
+  }
+  return m;
+}
 
 class AtomRef {
 public:
@@ -155,6 +261,13 @@ int main(int argc, char **argv) {
                                             e = Symbtab.end(); i != e; ++i) {
     outs() << i->Name << " -> [" << i->Priority << "]" << i->Path << "\n";
   }
+
+  Module *m = getCOFFModule(InputFilenames[0]);
+  for (std::vector<Atom>::const_iterator i = m->Atoms.begin(),
+                                         e = m->Atoms.end(); i != e; ++i) {
+    outs() << i->Name << "\n";
+  }
+  delete m;
 
   return 0;
 }
