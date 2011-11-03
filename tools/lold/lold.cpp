@@ -170,7 +170,7 @@ static error_code getCOFFModule(StringRef file, OwningPtr<Module> &result) {
 
         std::vector<RelocationRef>::const_iterator rel_cur = Rels.begin();
         std::vector<RelocationRef>::const_iterator rel_end = Rels.end();
-        Atom *a;
+        Atom *a = 0;
         for (unsigned si = 0, se = Symbols.size(); si != se; ++si) {
           uint64_t Start;
           uint64_t End;
@@ -185,6 +185,7 @@ static error_code getCOFFModule(StringRef file, OwningPtr<Module> &result) {
             if (End != Start)
               --End;
           }
+          Atom *prev = a;
           a = SymbolAtoms[Symbols[si]];
           if (End == Start) // Empty
             a->Contents = StringRef();
@@ -194,8 +195,8 @@ static error_code getCOFFModule(StringRef file, OwningPtr<Module> &result) {
           if (m->Atoms.size() > 0 && si != 0) {
             Link l;
             l.Type = Link::LT_FollowsFromConstraint;
-            l.ConstraintDistance = (**--m->Atoms.end()).Contents.size();
-            l.Operands.push_back((*--m->Atoms.end()));
+            l.ConstraintDistance = prev->Contents.size();
+            l.Operands.push_back(prev);
             a->Links.push_back(l);
           }
           // Add relocations.
