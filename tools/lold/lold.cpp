@@ -78,8 +78,7 @@ static error_code buildSectionSymbolAndAtomMap(Module &m,
     section_iterator sec = o->end_sections();
     if (error_code ec = i->getName(name)) return ec;
     if (error_code ec = i->getSection(sec)) return ec;
-    Name n = m.getContext().getName(name);
-    atom[*i] = m.getOrCreateAtom(n);
+    atom[*i] = m.getOrCreateAtom(m.getContext().getName(name));
     if (sec != o->end_sections())
       symb[*sec].push_back(*i);
   }
