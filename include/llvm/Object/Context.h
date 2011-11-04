@@ -10,22 +10,68 @@
 #ifndef LLVM_OBJECT_CONTEXT_H
 #define LLVM_OBJECT_CONTEXT_H
 
+#include "llvm/ADT/StringRef.h"
 #include "llvm/Object/Atom.h"
 #include "llvm/Support/Allocator.h"
+#include <map>
 
 namespace llvm {
-namespace object {
+class Twine;
 
-/// Context object for object files and linking. Owns all atoms it creates.
+namespace object {
+class Context;
+
+/// @brief Uniqued constant string. Comparison against another Name is a pointer
+///        comparison.
+///
+/// This class represents a pointer to a unique instance of a string. It can
+/// only be null constructed directly. A non-null instance must be created by a
+/// object::Context. Comparison between Names is a simple pointer comparison and
+/// does not access the actual string. Comparing Names created from different
+/// contexts has undefined behavior.
+///
+/// Remember when using this class that sorting using the default comparison
+/// operators will yield non-deterministic behavior. Ensure that any output
+/// does not depend on this sort order.
+class Name {
+  friend class Context;
+
+  struct Data {
+    uint32_t Length;
+  };
+
+  // Is a pointer to a Name::Data struct followed by a string.
+  const char *data;
+
+public:
+  Name() : data(0) {}
+
+  StringRef str() const {
+    uint32_t len = reinterpret_cast<const Data*>(data)->Length;
+    return StringRef(data + sizeof(Data), len);
+  }
+
+  bool operator==(const Name& other) const { return data == other.data; }
+  bool operator <(const Name& other) const { return data < other.data; }
+  bool operator >(const Name& other) const { return data > other.data; }
+  // The {<,>}= operators make no sense for this type.
+};
+
+/// Context object for object files and linking.
 class Context {
+  typedef std::map<StringRef, Name> NameMap_t;
+
   Context(const Context&); // = delete;
   Context &operator=(const Context&); // = delete;
 private:
   BumpPtrAllocator Allocator;
+  NameMap_t Names;
 
 public:
   Context();
   ~Context();
+
+  Name getName(Twine name);
 
   void *Allocate(unsigned Size, unsigned Align = 8) {
     return Allocator.Allocate(Size, Align);
