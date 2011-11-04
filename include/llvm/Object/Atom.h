@@ -10,6 +10,7 @@
 #ifndef LLVM_OBJECT_ATOM_H
 #define LLVM_OBJECT_ATOM_H
 
+#include "llvm/ADT/ilist.h"
 #include "llvm/ADT/ilist_node.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
@@ -24,7 +25,10 @@ class Module;
 // Discriminated union.
 class Link {
 public:
-  SmallVector<Atom*, 1> Operands;
+  typedef SmallVector<Atom*, 1> OperandList_t;
+  typedef OperandList_t::const_iterator operand_iterator;
+
+  OperandList_t Operands;
 
   enum {
     LT_Relocation,

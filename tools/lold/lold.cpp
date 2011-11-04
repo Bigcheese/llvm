@@ -15,6 +15,7 @@
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Object/Archive.h"
 #include "llvm/Object/COFF.h"
+#include "llvm/Object/Module.h"
 #include "llvm/Object/ObjectFile.h"
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/CommandLine.h"
@@ -45,38 +46,6 @@ static bool error(error_code ec) {
   return true;
 }
 
-class Link;
-
-class Atom {
-public:
-  virtual ~Atom() {}
-
-  bool Defined;
-  StringRef Contents;
-  StringRef Name;
-  std::vector<Link> Links;
-};
-
-class Link {
-public:
-  std::vector<Atom*> Operands;
-  enum {
-    LT_Reloc,
-    LT_FollowsFromConstraint
-  } Type;
-  union {
-    uint32_t ConstraintDistance;
-    uint64_t RelocInfo;
-  };
-  virtual ~Link() {}
-};
-
-class Module {
-public:
-  OwningPtr<Binary> binary;
-  std::vector<Atom*> Atoms;
-};
-
 static bool SortOffset(const SymbolRef &a, const SymbolRef &b) {
   uint64_t off_a, off_b;
   if (error(a.getOffset(off_a))) return false;
@@ -95,7 +64,7 @@ typedef std::map<SectionRef, std::vector<SymbolRef> > SectionSymbolMap_t;
 typedef std::map<SymbolRef, Atom*> SymbolAtomMap_t;
 
 static error_code buildSectionSymbolAndAtomMap(Module &m,
-                                               const COFFObjectFile *o,
+                                               const ObjectFile *o,
                                                SectionSymbolMap_t &symb,
                                                SymbolAtomMap_t &atom) {
   error_code ec;
@@ -108,31 +77,36 @@ static error_code buildSectionSymbolAndAtomMap(Module &m,
     section_iterator sec = o->end_sections();
     if (error_code ec = i->getName(name)) return ec;
     if (error_code ec = i->getSection(sec)) return ec;
-    Atom *a = new Atom;
-    a->Name = name;
-    atom[*i] = a;
-    m.Atoms.push_back(a);
+    atom[*i] = m.getOrCreateAtom(name);
     if (sec != o->end_sections())
       symb[*sec].push_back(*i);
   }
   return object_error::success;
 }
 
-static error_code getCOFFModule(StringRef file, OwningPtr<Module> &result) {
+static error_code getModule(StringRef file, OwningPtr<Module> &result) {
   error_code ec;
-  OwningPtr<Module> m(new Module);
   bool exists;
   if (error_code ec = sys::fs::exists(file, exists)) return ec;
   if (!exists) return make_error_code(errc::no_such_file_or_directory);
 
   // Attempt to open the binary.
-  if (error_code ec = createBinary(file, m->binary)) return ec;
+  OwningPtr<Binary> binary;
+  if (error_code ec = createBinary(file, binary)) return ec;
 
-  if (COFFObjectFile *o = dyn_cast<COFFObjectFile>(m->binary.get())) {
+  if (ObjectFile *o = dyn_cast<ObjectFile>(binary.get())) {
+    binary.take();
+    error_code ec;
+    OwningPtr<Module> m;
+    {
+      OwningPtr<ObjectFile> obj(o);
+      m.reset(new Module(obj, ec));
+    }
     SectionSymbolMap_t SectionSymbols;
     SymbolAtomMap_t SymbolAtoms;
-    if (error_code ec = buildSectionSymbolAndAtomMap(*m, o, SectionSymbols,
-                                                        SymbolAtoms))
+    if (error_code ec = buildSectionSymbolAndAtomMap(*m, o,
+                                                     SectionSymbols,
+                                                     SymbolAtoms))
       return ec;
     for (section_iterator i = o->begin_sections(),
                           e = o->end_sections();
@@ -157,11 +131,11 @@ static error_code getCOFFModule(StringRef file, OwningPtr<Module> &result) {
 
       // Create atoms by address range.
       if (Symbols.empty()) {
-        Atom *a = new Atom;
+        StringRef name;
+        if (error_code ec = i->getName(name)) return ec;
+        Atom *a = m->getOrCreateAtom(name);
         if (error_code ec = i->getContents(a->Contents)) return ec;
         a->Defined = true;
-        if (error_code ec = i->getName(a->Name)) return ec;
-        m->Atoms.push_back(a);
       } else {
         StringRef Bytes;
         if (error_code ec = i->getContents(Bytes)) return ec;
@@ -192,9 +166,9 @@ static error_code getCOFFModule(StringRef file, OwningPtr<Module> &result) {
           else
             a->Contents = Bytes.substr(Start, Start - End);
           a->Defined = true;
-          if (m->Atoms.size() > 0 && si != 0) {
+          if (prev && si != 0) {
             Link l;
-            l.Type = Link::LT_FollowsFromConstraint;
+            l.Type = Link::LT_LocationOffsetConstraint;
             l.ConstraintDistance = prev->Contents.size();
             l.Operands.push_back(prev);
             a->Links.push_back(l);
@@ -209,7 +183,7 @@ static error_code getCOFFModule(StringRef file, OwningPtr<Module> &result) {
             SymbolAtomMap_t::const_iterator atom = SymbolAtoms.find(symb);
             if (atom != SymbolAtoms.end()) {
               Link l;
-              l.Type = Link::LT_Reloc;
+              l.Type = Link::LT_Relocation;
               l.Operands.push_back(atom->second);
               a->Links.push_back(l);
             }
@@ -218,12 +192,12 @@ static error_code getCOFFModule(StringRef file, OwningPtr<Module> &result) {
         }
       }
     }
+    // The module was atomized successfully, give it to the result.
+    result.swap(m);
+    return object_error::success;
   } else {
     return object_error::invalid_file_type;
   }
-  // The module was atomized successfully, give it to the result.
-  result.swap(m);
-  return object_error::success;
 }
 
 class AtomRef {
@@ -327,27 +301,27 @@ int main(int argc, char **argv) {
   }
 
   OwningPtr<Module> m;
-  if (!error(getCOFFModule(InputFilenames[0], m))) {
-    for (std::vector<Atom*>::const_iterator i = m->Atoms.begin(),
-                                            e = m->Atoms.end(); i != e; ++i) {
-      outs() << "atom" << *i << " [label=\"" << (*i)->Name << "\"]\n";
-      for (std::vector<Link>::const_iterator li = (*i)->Links.begin(),
-                                             le = (*i)->Links.end();
+  if (!error(getModule(InputFilenames[0], m))) {
+    for (Module::atom_iterator i = m->atom_begin(),
+                               e = m->atom_end(); i != e; ++i) {
+      outs() << "atom" << i << " [label=\"" << i->Name << "\"]\n";
+      for (std::vector<Link>::const_iterator li = i->Links.begin(),
+                                             le = i->Links.end();
                                              li != le; ++li) {
-        outs() << "atom" << *i << " -> {";
-        for (std::vector<Atom*>::const_iterator oi = li->Operands.begin(),
-                                                oe = li->Operands.end();
-                                                oi != oe; ++oi) {
+        outs() << "atom" << i << " -> {";
+        for (Link::operand_iterator oi = li->Operands.begin(),
+                                    oe = li->Operands.end();
+                                    oi != oe; ++oi) {
           outs() << "atom" << *oi << " ";
         }
         outs() << "} [label=\"";
         switch (li->Type) {
-        case Link::LT_FollowsFromConstraint:
-          outs() << "LT_FollowsFromConstraint ("
+        case Link::LT_LocationOffsetConstraint:
+          outs() << "LT_LocationOffsetConstraint ("
                  << li->ConstraintDistance << ")";
           break;
-        case Link::LT_Reloc:
-          outs() << "LT_Reloc";
+        case Link::LT_Relocation:
+          outs() << "LT_Relocation";
           break;
         }
         outs() << "\"]\n";
