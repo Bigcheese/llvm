@@ -14,6 +14,7 @@
 #include "llvm/ADT/ilist_node.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
+#include "llvm/Object/Context.h"
 #include "llvm/Support/DataTypes.h"
 #include <vector>
 
@@ -56,7 +57,7 @@ protected:
 public:
   unsigned Defined : 1;
   StringRef Contents;
-  StringRef Name;
+  Name _Name;
   std::vector<Link> Links;
 };
 

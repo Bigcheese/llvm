@@ -11,7 +11,6 @@
 #define LLVM_OBJECT_CONTEXT_H
 
 #include "llvm/ADT/StringRef.h"
-#include "llvm/Object/Atom.h"
 #include "llvm/Support/Allocator.h"
 #include <map>
 

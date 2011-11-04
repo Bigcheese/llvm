@@ -19,29 +19,32 @@
 
 namespace llvm {
 namespace object {
+class Context;
+class Name;
 class ObjectFile;
 
 class Module {
 public:
   typedef iplist<Atom> AtomList_t;
   typedef AtomList_t::iterator atom_iterator;
-  typedef std::map<StringRef, Atom*> AtomMap_t;
+  typedef std::map<Name, Atom*> AtomMap_t;
 
 private:
   Module(const Module&); // = delete;
   Module &operator=(const Module&); // = delete;
 
 
-
+  Context &C;
   AtomList_t Atoms;
   AtomMap_t AtomMap;
   OwningPtr<ObjectFile> Represents;
 
 public:
-  Module(OwningPtr<ObjectFile> &from, error_code &ec);
+  Module(Context &c, OwningPtr<ObjectFile> &from, error_code &ec);
   ~Module();
 
-  Atom *getOrCreateAtom(StringRef name);
+  Context &getContext() const { return C; }
+  Atom *getOrCreateAtom(Name name);
 
   atom_iterator atom_begin() { return Atoms.begin(); }
   atom_iterator atom_end()   { return Atoms.end(); }

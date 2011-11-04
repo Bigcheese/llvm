@@ -15,6 +15,7 @@
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Object/Archive.h"
 #include "llvm/Object/COFF.h"
+#include "llvm/Object/Context.h"
 #include "llvm/Object/Module.h"
 #include "llvm/Object/ObjectFile.h"
 #include "llvm/Support/Casting.h"
@@ -77,14 +78,17 @@ static error_code buildSectionSymbolAndAtomMap(Module &m,
     section_iterator sec = o->end_sections();
     if (error_code ec = i->getName(name)) return ec;
     if (error_code ec = i->getSection(sec)) return ec;
-    atom[*i] = m.getOrCreateAtom(name);
+    Name n = m.getContext().getName(name);
+    atom[*i] = m.getOrCreateAtom(n);
     if (sec != o->end_sections())
       symb[*sec].push_back(*i);
   }
   return object_error::success;
 }
 
-static error_code getModule(StringRef file, OwningPtr<Module> &result) {
+static error_code getModule(StringRef file,
+                            OwningPtr<Module> &result,
+                            Context &C) {
   error_code ec;
   bool exists;
   if (error_code ec = sys::fs::exists(file, exists)) return ec;
@@ -100,7 +104,7 @@ static error_code getModule(StringRef file, OwningPtr<Module> &result) {
     OwningPtr<Module> m;
     {
       OwningPtr<ObjectFile> obj(o);
-      m.reset(new Module(obj, ec));
+      m.reset(new Module(C, obj, ec));
     }
     SectionSymbolMap_t SectionSymbols;
     SymbolAtomMap_t SymbolAtoms;
@@ -133,7 +137,7 @@ static error_code getModule(StringRef file, OwningPtr<Module> &result) {
       if (Symbols.empty()) {
         StringRef name;
         if (error_code ec = i->getName(name)) return ec;
-        Atom *a = m->getOrCreateAtom(name);
+        Atom *a = m->getOrCreateAtom(C.getName(name));
         if (error_code ec = i->getContents(a->Contents)) return ec;
         a->Defined = true;
       } else {
@@ -300,11 +304,12 @@ int main(int argc, char **argv) {
     outs() << i->Name << " -> [" << i->Priority << "]" << i->Path << "\n";
   }
 
+  Context C;
   OwningPtr<Module> m;
-  if (!error(getModule(InputFilenames[0], m))) {
+  if (!error(getModule(InputFilenames[0], m, C))) {
     for (Module::atom_iterator i = m->atom_begin(),
                                e = m->atom_end(); i != e; ++i) {
-      outs() << "atom" << i << " [label=\"" << i->Name << "\"]\n";
+      outs() << "atom" << i << " [label=\"" << i->_Name.str() << "\"]\n";
       for (std::vector<Link>::const_iterator li = i->Links.begin(),
                                              le = i->Links.end();
                                              li != le; ++li) {
