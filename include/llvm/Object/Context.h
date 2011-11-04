@@ -10,9 +10,9 @@
 #ifndef LLVM_OBJECT_CONTEXT_H
 #define LLVM_OBJECT_CONTEXT_H
 
+#include "llvm/ADT/StringMap.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Support/Allocator.h"
-#include <map>
 
 namespace llvm {
 class Twine;
@@ -39,26 +39,28 @@ class Name {
     uint32_t Length;
   };
 
-  // Is a pointer to a Name::Data struct followed by a string.
-  const char *data;
+  StringRef data;
 
 public:
-  Name() : data(0) {}
+  Name() {}
 
-  StringRef str() const {
-    uint32_t len = reinterpret_cast<const Data*>(data)->Length;
-    return StringRef(data + sizeof(Data), len);
+  StringRef str() const { return data; }
+
+  bool operator==(const Name& other) const {
+    return data.data() == other.data.data();
   }
-
-  bool operator==(const Name& other) const { return data == other.data; }
-  bool operator <(const Name& other) const { return data < other.data; }
-  bool operator >(const Name& other) const { return data > other.data; }
+  bool operator <(const Name& other) const {
+    return data.data() < other.data.data();
+  }
+  bool operator >(const Name& other) const {
+    return data.data() > other.data.data();
+  }
   // The {<,>}= operators make no sense for this type.
 };
 
 /// Context object for object files and linking.
 class Context {
-  typedef std::map<StringRef, Name> NameMap_t;
+  typedef StringMap<Name> NameMap_t;
 
   Context(const Context&); // = delete;
   Context &operator=(const Context&); // = delete;

@@ -22,19 +22,9 @@ Name Context::getName(Twine name) {
   SmallString<128> storage;
   StringRef n = name.toStringRef(storage);
   // See if we already have a name.
-  NameMap_t::const_iterator i = Names.find(n);
-  if (i == Names.end()) {
-    // Setup the data.
-    char *data = reinterpret_cast<char*>(
-                   Allocate(n.size() + sizeof(Name::Data),
-                            AlignOf<Name::Data>::Alignment));
-    reinterpret_cast<Name::Data*>(data)->Length = n.size();
-    std::memcpy(data + sizeof(Name::Data), n.data(), n.size());
-    Name ret;
-    ret.data = data;
-    // Note that the StringRef stored in the map references allocated memory.
-    Names[ret.str()] = ret;
-    return ret;
+  StringMapEntry<Name> &i = Names.GetOrCreateValue(n);
+  if (i.second.data.size() == 0) {
+    i.second.data = i.first();
   }
-  return i->second;
+  return i.second;
 }
