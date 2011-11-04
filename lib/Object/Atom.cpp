@@ -18,7 +18,3 @@ Atom::Atom() {
 
 Atom::~Atom() {
 }
-
-Atom *Atom::create(Context &C) {
-  return new (C) Atom;
-}

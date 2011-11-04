@@ -22,11 +22,18 @@ namespace object {
 class ObjectFile;
 
 class Module {
+public:
+  typedef iplist<Atom> AtomList_t;
+  typedef AtomList_t::iterator atom_iterator;
+  typedef std::map<StringRef, Atom*> AtomMap_t;
+
+private:
   Module(const Module&); // = delete;
   Module &operator=(const Module&); // = delete;
 
-  iplist<Atom> Atoms;
-  typedef std::map<StringRef, Atom*> AtomMap_t;
+
+
+  AtomList_t Atoms;
   AtomMap_t AtomMap;
   OwningPtr<ObjectFile> Represents;
 
@@ -35,6 +42,9 @@ public:
   ~Module();
 
   Atom *getOrCreateAtom(StringRef name);
+
+  atom_iterator atom_begin() { return Atoms.begin(); }
+  atom_iterator atom_end()   { return Atoms.end(); }
 };
 
 } // end namespace llvm
