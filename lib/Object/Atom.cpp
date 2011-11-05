@@ -13,7 +13,8 @@
 using namespace llvm;
 using namespace object;
 
-Atom::Atom() {
+Atom::Atom()
+  : Defined(false) {
 }
 
 Atom::~Atom() {

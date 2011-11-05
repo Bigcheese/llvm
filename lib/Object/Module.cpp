@@ -7,6 +7,7 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "llvm/ADT/Twine.h"
 #include "llvm/Object/Context.h"
 #include "llvm/Object/Module.h"
 #include "llvm/Object/ObjectFile.h"
@@ -32,4 +33,15 @@ Atom *Module::getOrCreateAtom(Name name) {
     return a;
   } else
     return atom->second;
+}
+
+Atom *Module::createAtom(Name name) {
+  Atom *a = new Atom;
+  if (name.str().size() == 0)
+    a->_Name = C.getName(Twine("atom") + Twine(intptr_t(a)));
+  else
+    a->_Name = name;
+  Atoms.push_back(a);
+  // Don't add to AtomMap, as it should not be looked up by name.
+  return a;
 }

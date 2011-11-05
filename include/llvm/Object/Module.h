@@ -46,6 +46,12 @@ public:
   Context &getContext() const { return C; }
   Atom *getOrCreateAtom(Name name);
 
+  /// @brief Create an anonymous atom.
+  ///
+  /// @param name If given, the given name will be the same. This means that
+  ///             multiple atoms can have the same name.
+  Atom *createAtom(Name name = Name());
+
   atom_iterator atom_begin() { return Atoms.begin(); }
   atom_iterator atom_end()   { return Atoms.end(); }
 };

@@ -98,6 +98,7 @@ private:
 
         error_code        getString(uint32_t offset, StringRef &Res) const;
 
+public:
   const coff_symbol      *toSymb(DataRefImpl Symb) const;
   const coff_section     *toSec(DataRefImpl Sec) const;
   const coff_relocation  *toRel(DataRefImpl Rel) const;

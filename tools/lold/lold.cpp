@@ -78,7 +78,17 @@ static error_code buildSectionSymbolAndAtomMap(Module &m,
     section_iterator sec = o->end_sections();
     if (error_code ec = i->getName(name)) return ec;
     if (error_code ec = i->getSection(sec)) return ec;
-    atom[*i] = m.getOrCreateAtom(m.getContext().getName(name));
+    if (const COFFObjectFile *coff = dyn_cast<const COFFObjectFile>(o)) {
+      const coff_symbol *symb = coff->toSymb(i->getRawDataRefImpl());
+      // Section symbol.
+      if (symb->StorageClass == COFF::IMAGE_SYM_CLASS_STATIC
+          && symb->Value == 0) {
+        // Create a unique name.
+        atom[*i] = m.createAtom(m.getContext().getName(name));
+      } else
+        atom[*i] = m.getOrCreateAtom(m.getContext().getName(name));
+    } else
+      atom[*i] = m.getOrCreateAtom(m.getContext().getName(name));
     if (sec != o->end_sections())
       symb[*sec].push_back(*i);
   }
@@ -308,7 +318,11 @@ int main(int argc, char **argv) {
   if (!error(getModule(InputFilenames[0], m, C))) {
     for (Module::atom_iterator i = m->atom_begin(),
                                e = m->atom_end(); i != e; ++i) {
-      outs() << "atom" << i << " [label=\"" << i->_Name.str() << "\"]\n";
+      outs() << "atom" << i
+             << " [label=\"" << i->_Name.str() << "\"";
+      if (i->Defined)
+        outs() << " shape=box ";
+      outs() << "]\n";
       for (std::vector<Link>::const_iterator li = i->Links.begin(),
                                              le = i->Links.end();
                                              li != le; ++li) {
