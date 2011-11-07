@@ -220,7 +220,7 @@ public:
     , Instance(0) {
   }
 
-  std::string Name;
+  Name Name;
   uint32_t Priority;
   std::string Path;
   Atom *Instance;
@@ -236,7 +236,7 @@ public:
 
 static std::vector<AtomRef> Symbtab;
 
-static void ProcessInput(StringRef file, uint32_t priority) {
+static void ProcessInput(StringRef file, uint32_t priority, Context &C) {
   if (!sys::fs::exists(file)) {
     errs() << ToolName << ": '" << file << "': " << "No such file\n";
     return;
@@ -261,7 +261,7 @@ static void ProcessInput(StringRef file, uint32_t priority) {
       if (error(i->getMember(child))) continue;
       if (error(child->getName(child_name))) continue;
       AtomRef ar;
-      ar.Name = name;
+      ar.Name = C.getName(name);
       ar.Path = a->getFileName();
       ar.Path += '/';
       ar.Path += child_name;
@@ -280,7 +280,7 @@ static void ProcessInput(StringRef file, uint32_t priority) {
       if (error(i->getType(type)) || type == SymbolRef::ST_External) continue;
       if (error(i->getName(name))) continue;
       AtomRef ar;
-      ar.Name = name;
+      ar.Name = C.getName(name);
       ar.Path = o->getFileName();
       ar.Priority = priority << 16;
       Symbtab.push_back(ar);
@@ -295,13 +295,14 @@ int main(int argc, char **argv) {
   sys::PrintStackTraceOnErrorSignal();
   PrettyStackTraceProgram X(argc, argv);
   llvm_shutdown_obj Y;  // Call llvm_shutdown() on exit.
+  Context C;
 
   cl::ParseCommandLineOptions(argc, argv, "LLVM Object Link Editor\n");
   ToolName = argv[0];
 
   // Gather symbol table entries.
   for (int i = 0, e = InputFilenames.size(); i != e; ++i) {
-    ProcessInput(InputFilenames[i], i);
+    ProcessInput(InputFilenames[i], i, C);
   }
 
   // Sort symbol table by name and then priority.
@@ -310,10 +311,9 @@ int main(int argc, char **argv) {
   // Print it!
   for (std::vector<AtomRef>::const_iterator i = Symbtab.begin(),
                                             e = Symbtab.end(); i != e; ++i) {
-    outs() << i->Name << " -> [" << i->Priority << "]" << i->Path << "\n";
+    outs() << i->Name.str() << " -> [" << i->Priority << "]" << i->Path << "\n";
   }
 
-  Context C;
   OwningPtr<Module> m;
   if (!error(getModule(InputFilenames[0], m, C))) {
     for (Module::atom_iterator i = m->atom_begin(),
