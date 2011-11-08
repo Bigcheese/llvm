@@ -1,0 +1,34 @@
+llvm megatool:
+
+Why?
+
+* The current setup is lame.
+
+Why?
+
+* Takes a long time to link all those apps. Excpecailly on Windows where you
+  have to statically link. Thus you pay for linking all of llvm in each one :(.
+* The naming is inconsistent, as are the actual human interfaces.
+* Statically linked they take up a large ammount of size, even though the actual
+  driver code is a few hundred lines.
+* They currentl'y are using names I want for my fools.
+
+Well then what are you going to do about it. HUH!
+
+
+* Merge all of the hacker tools into a single megatool. One tool to rule them all!
+* Quite literally. The megatool will simply dispach to the tools as they
+  currently are based on their name. Thus llvm-as becomes llvm as
+* Simple as that!
+
+How's it gonna get done.
+
+* First, I leave everyhing as it is.
+* I add the llvmmegatron2000 program and start reimplementing all of the tools
+  we currently have. Meanwhile refactoring them to share code and use modern
+  LLVM style.
+* ***** we have a working llvm megetool *****
+* Start converting all references too llvm-x with llvm x
+* Once llvm-x tools have no dependencies... We murder them.
+* ???
+* profit
