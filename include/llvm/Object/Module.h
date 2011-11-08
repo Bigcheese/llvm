@@ -14,10 +14,12 @@
 #include "llvm/ADT/OwningPtr.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Object/Atom.h"
-#include "llvm/Support/system_error.h"
 #include <map>
 
 namespace llvm {
+class raw_ostream;
+class error_code;
+
 namespace object {
 class Context;
 class Name;
@@ -40,8 +42,15 @@ private:
   OwningPtr<ObjectFile> Represents;
 
 public:
+  /// @brief Create an empty module.
+  Module(Context &c) : C(c) {}
+
+  /// @brief Create a module and read atoms from @arg from into it. If ec, the
+  ///        module is empty.
   Module(Context &c, OwningPtr<ObjectFile> &from, error_code &ec);
   ~Module();
+
+  error_code mergeObject(ObjectFile *obj);
 
   Context &getContext() const { return C; }
   Atom *getOrCreateAtom(Name name);
@@ -54,6 +63,8 @@ public:
 
   atom_iterator atom_begin() { return Atoms.begin(); }
   atom_iterator atom_end()   { return Atoms.end(); }
+
+  void printGraph(raw_ostream &o);
 };
 
 } // end namespace llvm

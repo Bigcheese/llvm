@@ -14,7 +14,6 @@
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Object/Archive.h"
-#include "llvm/Object/COFF.h"
 #include "llvm/Object/Context.h"
 #include "llvm/Object/Module.h"
 #include "llvm/Object/ObjectFile.h"
@@ -42,57 +41,9 @@ static StringRef ToolName;
 static bool error(error_code ec) {
   if (!ec) return false;
 
-  outs() << ToolName << ": error reading file: " << ec.message() << ".\n";
-  outs().flush();
+  errs() << ToolName << ": error reading file: " << ec.message() << ".\n";
+  errs().flush();
   return true;
-}
-
-static bool SortOffset(const SymbolRef &a, const SymbolRef &b) {
-  uint64_t off_a, off_b;
-  if (error(a.getOffset(off_a))) return false;
-  if (error(b.getOffset(off_b))) return false;
-  return off_a < off_b;
-}
-
-static bool RelocAddressLess(RelocationRef a, RelocationRef b) {
-  uint64_t a_addr, b_addr;
-  if (error(a.getAddress(a_addr))) return false;
-  if (error(b.getAddress(b_addr))) return false;
-  return a_addr < b_addr;
-}
-
-typedef std::map<SectionRef, std::vector<SymbolRef> > SectionSymbolMap_t;
-typedef std::map<SymbolRef, Atom*> SymbolAtomMap_t;
-
-static error_code buildSectionSymbolAndAtomMap(Module &m,
-                                               const ObjectFile *o,
-                                               SectionSymbolMap_t &symb,
-                                               SymbolAtomMap_t &atom) {
-  error_code ec;
-  for (symbol_iterator i = o->begin_symbols(),
-                       e = o->end_symbols();
-                       i != e; i.increment(ec)) {
-    if (ec) return ec;
-    // Create a null atom for each symbol and get the section it's in.
-    StringRef name;
-    section_iterator sec = o->end_sections();
-    if (error_code ec = i->getName(name)) return ec;
-    if (error_code ec = i->getSection(sec)) return ec;
-    if (const COFFObjectFile *coff = dyn_cast<const COFFObjectFile>(o)) {
-      const coff_symbol *symb = coff->toSymb(i->getRawDataRefImpl());
-      // Section symbol.
-      if (symb->StorageClass == COFF::IMAGE_SYM_CLASS_STATIC
-          && symb->Value == 0) {
-        // Create a unique name.
-        atom[*i] = m.createAtom(m.getContext().getName(name));
-      } else
-        atom[*i] = m.getOrCreateAtom(m.getContext().getName(name));
-    } else
-      atom[*i] = m.getOrCreateAtom(m.getContext().getName(name));
-    if (sec != o->end_sections())
-      symb[*sec].push_back(*i);
-  }
-  return object_error::success;
 }
 
 static error_code getModule(StringRef file,
@@ -109,105 +60,7 @@ static error_code getModule(StringRef file,
 
   if (ObjectFile *o = dyn_cast<ObjectFile>(binary.get())) {
     binary.take();
-    error_code ec;
-    OwningPtr<Module> m;
-    {
-      OwningPtr<ObjectFile> obj(o);
-      m.reset(new Module(C, obj, ec));
-    }
-    SectionSymbolMap_t SectionSymbols;
-    SymbolAtomMap_t SymbolAtoms;
-    if (error_code ec = buildSectionSymbolAndAtomMap(*m, o,
-                                                     SectionSymbols,
-                                                     SymbolAtoms))
-      return ec;
-    for (section_iterator i = o->begin_sections(),
-                          e = o->end_sections();
-                          i != e; i.increment(ec)) {
-      if (ec) return ec;
-      // Gather up the symbols this section defines.
-      std::vector<SymbolRef> &Symbols = SectionSymbols[*i];
 
-      // Sort symbols by address.
-      std::stable_sort(Symbols.begin(), Symbols.end(), SortOffset);
-
-      // Make a list of all the relocations for this section.
-      std::vector<RelocationRef> Rels;
-      for (relocation_iterator ri = i->begin_relocations(),
-                               re = i->end_relocations();
-                               ri != re; ri.increment(ec)) {
-        if (ec) return ec;
-        Rels.push_back(*ri);
-      }
-      // Sort relocations by address.
-      std::stable_sort(Rels.begin(), Rels.end(), RelocAddressLess);
-
-      // Create atoms by address range.
-      if (Symbols.empty()) {
-        StringRef name;
-        if (error_code ec = i->getName(name)) return ec;
-        Atom *a = m->getOrCreateAtom(C.getName(name));
-        if (error_code ec = i->getContents(a->Contents)) return ec;
-        a->Defined = true;
-      } else {
-        StringRef Bytes;
-        if (error_code ec = i->getContents(Bytes)) return ec;
-        uint64_t SectSize;
-        if (error_code ec = i->getSize(SectSize)) return ec;
-
-        std::vector<RelocationRef>::const_iterator rel_cur = Rels.begin();
-        std::vector<RelocationRef>::const_iterator rel_end = Rels.end();
-        Atom *a = 0;
-        for (unsigned si = 0, se = Symbols.size(); si != se; ++si) {
-          uint64_t Start;
-          uint64_t End;
-          Symbols[si].getOffset(Start);
-          // The end is either the size of the section or the beginning of the
-          // next symbol.
-          if (si == se - 1)
-            End = SectSize;
-          else {
-            Symbols[si + 1].getOffset(End);
-            // Make sure this symbol takes up space.
-            if (End != Start)
-              --End;
-          }
-          Atom *prev = a;
-          a = SymbolAtoms[Symbols[si]];
-          if (End == Start) // Empty
-            a->Contents = StringRef();
-          else
-            a->Contents = Bytes.substr(Start, Start - End);
-          a->Defined = true;
-          if (prev && si != 0) {
-            Link l;
-            l.Type = Link::LT_LocationOffsetConstraint;
-            l.ConstraintDistance = prev->Contents.size();
-            l.Operands.push_back(prev);
-            a->Links.push_back(l);
-          }
-          // Add relocations.
-          while (rel_cur != rel_end) {
-            uint64_t addr;
-            if (error_code ec = rel_cur->getAddress(addr)) return ec;
-            if (addr > End) break;
-            SymbolRef symb;
-            if (error_code ec = rel_cur->getSymbol(symb)) return ec;
-            SymbolAtomMap_t::const_iterator atom = SymbolAtoms.find(symb);
-            if (atom != SymbolAtoms.end()) {
-              Link l;
-              l.Type = Link::LT_Relocation;
-              l.Operands.push_back(atom->second);
-              a->Links.push_back(l);
-            }
-            ++rel_cur;
-          }
-        }
-      }
-    }
-    // The module was atomized successfully, give it to the result.
-    result.swap(m);
-    return object_error::success;
   } else {
     return object_error::invalid_file_type;
   }
@@ -217,13 +70,19 @@ class AtomRef {
 public:
   AtomRef()
     : Priority(0)
-    , Instance(0) {
+    , Instance(0)
+    , Obj(0)
+    , Arch(0)
+    , Used(false) {
   }
 
   Name Name;
   uint32_t Priority;
-  std::string Path;
   Atom *Instance;
+  ObjectFile *Obj;
+  Archive *Arch;
+  Archive::child_iterator Member;
+  bool Used;
 
   bool operator <(const AtomRef &other) const {
     if (Name < other.Name)
@@ -234,7 +93,8 @@ public:
   }
 };
 
-static std::vector<AtomRef> Symbtab;
+typedef std::vector<AtomRef> Symbtab_t;
+static Symbtab_t Symbtab;
 
 static void ProcessInput(StringRef file, uint32_t priority, Context &C) {
   if (!sys::fs::exists(file)) {
@@ -250,6 +110,7 @@ static void ProcessInput(StringRef file, uint32_t priority, Context &C) {
   }
 
   if (Archive *a = dyn_cast<Archive>(binary.get())) {
+    binary.take();
     uint32_t obj_priority = 0;
     error_code ec;
     for (Archive::symbol_iterator i = a->begin_symbols(),
@@ -261,14 +122,14 @@ static void ProcessInput(StringRef file, uint32_t priority, Context &C) {
       if (error(i->getMember(child))) continue;
       if (error(child->getName(child_name))) continue;
       AtomRef ar;
+      ar.Arch = a;
+      ar.Member = child;
       ar.Name = C.getName(name);
-      ar.Path = a->getFileName();
-      ar.Path += '/';
-      ar.Path += child_name;
       ar.Priority = (priority << 16) | obj_priority++;
       Symbtab.push_back(ar);
     }
   } else if (ObjectFile *o = dyn_cast<ObjectFile>(binary.get())) {
+    binary.take();
     error_code ec;
     for (symbol_iterator i = o->begin_symbols(),
                          e = o->end_symbols(); i != e; i.increment(ec)) {
@@ -280,8 +141,8 @@ static void ProcessInput(StringRef file, uint32_t priority, Context &C) {
       if (error(i->getType(type)) || type == SymbolRef::ST_External) continue;
       if (error(i->getName(name))) continue;
       AtomRef ar;
+      ar.Obj = o;
       ar.Name = C.getName(name);
-      ar.Path = o->getFileName();
       ar.Priority = priority << 16;
       Symbtab.push_back(ar);
     }
@@ -289,6 +150,12 @@ static void ProcessInput(StringRef file, uint32_t priority, Context &C) {
     errs() << ToolName << ": '" << file << "': " << "Unrecognized file type.\n";
   }
 }
+
+struct FindAtomRefString {
+  bool operator ()(const AtomRef &a, Name n) {
+    return a.Name < n;
+  }
+};
 
 int main(int argc, char **argv) {
   // Print a stack trace if we signal out.
@@ -308,44 +175,72 @@ int main(int argc, char **argv) {
   // Sort symbol table by name and then priority.
   std::sort(Symbtab.begin(), Symbtab.end());
 
+#if 0
   // Print it!
   for (std::vector<AtomRef>::const_iterator i = Symbtab.begin(),
                                             e = Symbtab.end(); i != e; ++i) {
     outs() << i->Name.str() << " -> [" << i->Priority << "]" << i->Path << "\n";
   }
+#endif
 
-  OwningPtr<Module> m;
-  if (!error(getModule(InputFilenames[0], m, C))) {
-    for (Module::atom_iterator i = m->atom_begin(),
-                               e = m->atom_end(); i != e; ++i) {
-      outs() << "atom" << i
-             << " [label=\"" << i->_Name.str() << "\"";
-      if (i->Defined)
-        outs() << " shape=box ";
-      outs() << "]\n";
-      for (std::vector<Link>::const_iterator li = i->Links.begin(),
-                                             le = i->Links.end();
-                                             li != le; ++li) {
-        outs() << "atom" << i << " -> {";
-        for (Link::operand_iterator oi = li->Operands.begin(),
-                                    oe = li->Operands.end();
-                                    oi != oe; ++oi) {
-          outs() << "atom" << *oi << " ";
-        }
-        outs() << "} [label=\"";
-        switch (li->Type) {
-        case Link::LT_LocationOffsetConstraint:
-          outs() << "LT_LocationOffsetConstraint ("
-                 << li->ConstraintDistance << ")";
-          break;
-        case Link::LT_Relocation:
-          outs() << "LT_Relocation";
-          break;
-        }
-        outs() << "\"]\n";
-      }
+  std::vector<Atom*> UndefinedExternals;
+
+  // Create empty module for output.
+  OwningPtr<Module> output(new Module(C));
+  // Add starting atom.
+  Atom *start = output->getOrCreateAtom(C.getName("_mainCRTStartup"));
+  start->External = true;
+  UndefinedExternals.push_back(start);
+
+  while (!UndefinedExternals.empty()) {
+    Atom *a = *--UndefinedExternals.end();
+    UndefinedExternals.pop_back();
+    // Find this symbol.
+    Symbtab_t::iterator i = std::lower_bound( Symbtab.begin()
+                                            , Symbtab.end()
+                                            , a->_Name
+                                            , FindAtomRefString());
+    if (i == Symbtab.end()) {
+      // errs() << "Ohnoes, couldn't find symbol! " << a->_Name.str() << "\n";
+      continue;
     }
+    if (i->Used) continue;
+    i->Used = true;
+    errs() << i->Name.str() << " -> [" << i->Priority << "]\n";
+
+    // Import the object into the module.
+    ObjectFile *o = 0;
+    if (i->Obj)
+      o = i->Obj;
+    else if (i->Arch) {
+      OwningPtr<Binary> b;
+      if (error(i->Member->getAsBinary(b))) {
+        StringRef name;
+        if (!i->Member->getName(name))
+          errs() << name << "\n";
+        continue;
+      }
+      o = dyn_cast<ObjectFile>(b.get());
+      if (o)
+        b.take();
+    }
+
+    if (o) {
+      output->mergeObject(o);
+      // FIXME: This is horribly inefficient, mergeObject should populate
+      //        UndefinedExternals.
+      for (Module::atom_iterator ai = output->atom_begin(),
+                                 ae = output->atom_end(); ai != ae; ++ai) {
+        if (ai->External && !ai->Defined)
+          UndefinedExternals.push_back(ai);
+      }
+    } else
+      errs() << "Failed to get object to merge.\n";
   }
+
+  outs().flush();
+  errs().flush();
+  output->printGraph(outs());
 
   return 0;
 }

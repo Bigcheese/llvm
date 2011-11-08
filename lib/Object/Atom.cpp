@@ -14,7 +14,8 @@ using namespace llvm;
 using namespace object;
 
 Atom::Atom()
-  : Defined(false) {
+  : Defined(false)
+  , External(false) {
 }
 
 Atom::~Atom() {
