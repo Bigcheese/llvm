@@ -204,26 +204,26 @@ struct IsExternal {
 
 void Module::printGraph(raw_ostream &o) {
   for (atom_iterator i = atom_begin(), e = atom_end(); i != e; ++i) {
-    if (!i->External) continue;
+    // if (!i->External) continue;
     o << "atom" << i << " [label=\"" << i->_Name.str() << "\"";
     if (i->Defined)
       o << " shape=box ";
     if (i->External)
       o << " color=green ";
     o << "]\n";
-    o << "Link count: " << i->Links.size() << "\n";
+    // o << "Link count: " << i->Links.size() << "\n";
     for (std::vector<Link>::const_iterator li = i->Links.begin(),
                                            le = i->Links.end();
                                            li != le; ++li) {
       Link::operand_iterator lfoi =
         std::find_if(li->Operands.begin(), li->Operands.end(), IsExternal());
-      if (lfoi == li->Operands.end())
-        continue;
+      //if (lfoi == li->Operands.end())
+        //continue;
       o << "atom" << i << " -> {";
       for (Link::operand_iterator oi = li->Operands.begin(),
                                   oe = li->Operands.end();
                                   oi != oe; ++oi) {
-        if ((*oi)->External)
+        // if ((*oi)->External)
           o << "atom" << *oi << " ";
       }
       o << "} [label=\"";
