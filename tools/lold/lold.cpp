@@ -188,8 +188,10 @@ int main(int argc, char **argv) {
 
   // Create empty module for output.
   OwningPtr<Module> output(new Module(C));
+  Modules.push_back(output.get());
   // Add starting atom.
-  Atom *start = output->getOrCreateAtom(C.getName("_mainCRTStartup"));
+  // Atom *start = output->getOrCreateAtom(C.getName("_mainCRTStartup"));
+  Atom *start = output->getOrCreateAtom(C.getName("_main"));
   start->External = true;
   UndefinedExternals.push_back(start);
 
@@ -261,12 +263,52 @@ int main(int argc, char **argv) {
 
   outs().flush();
   errs().flush();
+#if 0
   outs() << "digraph {\n";
   output->printGraph(outs());
   for (std::size_t i = 0; i < Modules.size(); ++i) {
     Modules[i]->printGraph(outs());
   }
   outs() << "}\n";
+#endif
+#if 1
+  outs () << "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n"
+          << "<gexf xmlns=\"http://www.gexf.net/1.2draft\" version=\"1.2\" xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\" xsi:schemaLocation=\"http://www.gexf.net/1.2draft http://www.gexf.net/1.2draft/gexf.xsd\">\n"
+          << "<graph defaultedgetype=\"directed\">\n"
+          << "<nodes>\n";
+
+  for (std::size_t i = 0; i < Modules.size(); ++i) {
+    for (Module::atom_iterator ai = Modules[i]->atom_begin(),
+                               ae = Modules[i]->atom_end(); ai != ae; ++ai) {
+      outs() << "<node id=\"" << "atom" << ai
+             << "\" label=\"" << ai->_Name.str() << "\" />\n";
+    }
+  }
+  outs () << "</nodes>\n"
+          << "<edges>\n";
+
+  int id = 0;
+  for (std::size_t i = 0; i < Modules.size(); ++i) {
+    for (Module::atom_iterator ai = Modules[i]->atom_begin(),
+                               ae = Modules[i]->atom_end(); ai != ae; ++ai) {
+      for (std::vector<Link>::const_iterator li = ai->Links.begin(),
+                                             le = ai->Links.end();
+                                             li != le; ++li) {
+        for (Link::operand_iterator oi = li->Operands.begin(),
+                                    oe = li->Operands.end();
+                                    oi != oe; ++oi) {
+          outs() << "<edge id=\"" << id++ << "\""
+                 << " source=\"" << "atom" << ai << "\""
+                 << " target=\"" << "atom" << *oi << "\"/>\n";
+        }
+      }
+    }
+  }
+
+  outs() << "</edges>\n"
+         << "</graph>\n"
+         << "</gexf>\n";
+#endif
 
   return 0;
 }
