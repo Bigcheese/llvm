@@ -199,14 +199,17 @@ Atom *Module::createAtom(Name name) {
 }
 
 void Module::printGraph(raw_ostream &o) {
-  o << "subgraph \"cluster" << ObjName.str() << "\" {\n";
+  o << "subgraph \"cluster_" << ObjName.str() << "\" {\n";
   for (atom_iterator i = atom_begin(), e = atom_end(); i != e; ++i) {
     o << "atom" << i << " [label=\"" << i->_Name.str() << "\"";
     if (i->Defined)
       o << " shape=box ";
     if (i->External)
       o << " color=green ";
-    o << "]\n";
+    o << "];\n";
+  }
+  o << "}\n";
+  for (atom_iterator i = atom_begin(), e = atom_end(); i != e; ++i) {
     for (std::vector<Link>::const_iterator li = i->Links.begin(),
                                            le = i->Links.end();
                                            li != le; ++li) {
@@ -229,8 +232,7 @@ void Module::printGraph(raw_ostream &o) {
         o << "LT_ResolvedTo";
         break;
       }
-      o << "\"]\n";
+      o << "\"];\n";
     }
   }
-  o << "}\n";
 }

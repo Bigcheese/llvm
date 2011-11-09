@@ -72,8 +72,7 @@ public:
     : Priority(0)
     , Instance(0)
     , Obj(0)
-    , Arch(0)
-    , Used(false) {
+    , Arch(0) {
   }
 
   Name Name;
@@ -82,7 +81,6 @@ public:
   ObjectFile *Obj;
   Archive *Arch;
   Archive::child_iterator Member;
-  bool Used;
 
   bool operator <(const AtomRef &other) const {
     if (Name < other.Name)
@@ -185,11 +183,13 @@ int main(int argc, char **argv) {
 
   std::vector<Atom*> UndefinedExternals;
   std::vector<Module*> Modules;
+  std::map<ObjectFile*, Module*> ModMap;
+  std::map<Archive::child_iterator, ObjectFile*> ChildMap;
 
   // Create empty module for output.
   OwningPtr<Module> output(new Module(C));
   // Add starting atom.
-  Atom *start = output->getOrCreateAtom(C.getName("_main"));
+  Atom *start = output->getOrCreateAtom(C.getName("_mainCRTStartup"));
   start->External = true;
   UndefinedExternals.push_back(start);
 
@@ -202,42 +202,52 @@ int main(int argc, char **argv) {
                                             , a->_Name
                                             , FindAtomRefString());
     if (i == Symbtab.end()) {
-      errs() << "Ohnoes, couldn't find symbol! " << a->_Name.str() << "\n";
+      // errs() << "Ohnoes, couldn't find symbol! " << a->_Name.str() << "\n";
       continue;
     }
 
-    errs() << i->Name.str() << " -> [" << i->Priority << "]\n";
+    // errs() << i->Name.str() << " -> [" << i->Priority << "]\n";
 
     if (!i->Instance) {
       ObjectFile *o = 0;
       if (i->Obj)
         o = i->Obj;
       else if (i->Arch) {
-        OwningPtr<Binary> b;
-        if (error(i->Member->getAsBinary(b))) {
-          StringRef name;
-          if (!i->Member->getName(name))
-            errs() << name << "\n";
-          continue;
-        }
-        o = dyn_cast<ObjectFile>(b.get());
-        if (o) {
-          b.take();
-          i->Obj = o;
+        if (ChildMap.find(i->Member) != ChildMap.end()) {
+          o = i->Obj = ChildMap[i->Member];
+        } else {
+          OwningPtr<Binary> b;
+          if (error(i->Member->getAsBinary(b))) {
+            StringRef name;
+            if (!i->Member->getName(name))
+              errs() << name << "\n";
+            continue;
+          }
+          o = dyn_cast<ObjectFile>(b.get());
+          if (o) {
+            b.take();
+            i->Obj = o;
+            ChildMap[i->Member] = o;
+          }
         }
       }
 
       if (o) {
-        Module *m = new Module(C);
-        Modules.push_back(m);
-        if (error(m->mergeObject(o))) continue;
-        i->Instance = m->getOrCreateAtom(i->Name);
-        // FIXME: This is horribly inefficient, mergeObject should populate
-        //        UndefinedExternals.
-        for (Module::atom_iterator ai = m->atom_begin(),
-                                   ae = m->atom_end(); ai != ae; ++ai) {
-          if (ai->External && !ai->Defined)
-            UndefinedExternals.push_back(ai);
+        if (ModMap.find(o) != ModMap.end()) {
+          i->Instance = ModMap[o]->getOrCreateAtom(i->Name);
+        } else {
+          Module *m = new Module(C);
+          Modules.push_back(m);
+          ModMap[o] = m;
+          if (error(m->mergeObject(o))) continue;
+          i->Instance = m->getOrCreateAtom(i->Name);
+          // FIXME: This is horribly inefficient, mergeObject should populate
+          //        UndefinedExternals.
+          for (Module::atom_iterator ai = m->atom_begin(),
+                                     ae = m->atom_end(); ai != ae; ++ai) {
+            if (ai->External && !ai->Defined)
+              UndefinedExternals.push_back(ai);
+          }
         }
       } else
         errs() << "Failed to get object to merge.\n";
