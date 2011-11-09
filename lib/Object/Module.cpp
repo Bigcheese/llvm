@@ -79,6 +79,8 @@ static error_code buildSectionSymbolAndAtomMap(Module &m,
 }
 
 error_code Module::mergeObject(ObjectFile *o) {
+  ObjName = C.getName(o->getFileName());
+
   error_code ec;
   SectionSymbolMap_t SectionSymbols;
   SymbolAtomMap_t SymbolAtoms;
@@ -197,6 +199,7 @@ Atom *Module::createAtom(Name name) {
 }
 
 void Module::printGraph(raw_ostream &o) {
+  o << "subgraph \"cluster" << ObjName.str() << "\" {\n";
   for (atom_iterator i = atom_begin(), e = atom_end(); i != e; ++i) {
     o << "atom" << i << " [label=\"" << i->_Name.str() << "\"";
     if (i->Defined)
@@ -222,8 +225,12 @@ void Module::printGraph(raw_ostream &o) {
       case Link::LT_Relocation:
         o << "LT_Relocation";
         break;
+      case Link::LT_ResolvedTo:
+        o << "LT_ResolvedTo";
+        break;
       }
       o << "\"]\n";
     }
   }
+  o << "}\n";
 }

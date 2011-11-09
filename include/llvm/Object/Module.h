@@ -40,6 +40,7 @@ private:
   AtomList_t Atoms;
   AtomMap_t AtomMap;
   OwningPtr<ObjectFile> Represents;
+  Name ObjName;
 
 public:
   /// @brief Create an empty module.

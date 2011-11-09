@@ -184,11 +184,12 @@ int main(int argc, char **argv) {
 #endif
 
   std::vector<Atom*> UndefinedExternals;
+  std::vector<Module*> Modules;
 
   // Create empty module for output.
   OwningPtr<Module> output(new Module(C));
   // Add starting atom.
-  Atom *start = output->getOrCreateAtom(C.getName("_mainCRTStartup"));
+  Atom *start = output->getOrCreateAtom(C.getName("_main"));
   start->External = true;
   UndefinedExternals.push_back(start);
 
@@ -201,46 +202,61 @@ int main(int argc, char **argv) {
                                             , a->_Name
                                             , FindAtomRefString());
     if (i == Symbtab.end()) {
-      // errs() << "Ohnoes, couldn't find symbol! " << a->_Name.str() << "\n";
+      errs() << "Ohnoes, couldn't find symbol! " << a->_Name.str() << "\n";
       continue;
     }
-    if (i->Used) continue;
-    i->Used = true;
+
     errs() << i->Name.str() << " -> [" << i->Priority << "]\n";
 
-    // Import the object into the module.
-    ObjectFile *o = 0;
-    if (i->Obj)
-      o = i->Obj;
-    else if (i->Arch) {
-      OwningPtr<Binary> b;
-      if (error(i->Member->getAsBinary(b))) {
-        StringRef name;
-        if (!i->Member->getName(name))
-          errs() << name << "\n";
-        continue;
+    if (!i->Instance) {
+      ObjectFile *o = 0;
+      if (i->Obj)
+        o = i->Obj;
+      else if (i->Arch) {
+        OwningPtr<Binary> b;
+        if (error(i->Member->getAsBinary(b))) {
+          StringRef name;
+          if (!i->Member->getName(name))
+            errs() << name << "\n";
+          continue;
+        }
+        o = dyn_cast<ObjectFile>(b.get());
+        if (o) {
+          b.take();
+          i->Obj = o;
+        }
       }
-      o = dyn_cast<ObjectFile>(b.get());
-      if (o)
-        b.take();
+
+      if (o) {
+        Module *m = new Module(C);
+        Modules.push_back(m);
+        if (error(m->mergeObject(o))) continue;
+        i->Instance = m->getOrCreateAtom(i->Name);
+        // FIXME: This is horribly inefficient, mergeObject should populate
+        //        UndefinedExternals.
+        for (Module::atom_iterator ai = m->atom_begin(),
+                                   ae = m->atom_end(); ai != ae; ++ai) {
+          if (ai->External && !ai->Defined)
+            UndefinedExternals.push_back(ai);
+        }
+      } else
+        errs() << "Failed to get object to merge.\n";
     }
 
-    if (o) {
-      output->mergeObject(o);
-      // FIXME: This is horribly inefficient, mergeObject should populate
-      //        UndefinedExternals.
-      for (Module::atom_iterator ai = output->atom_begin(),
-                                 ae = output->atom_end(); ai != ae; ++ai) {
-        if (ai->External && !ai->Defined)
-          UndefinedExternals.push_back(ai);
-      }
-    } else
-      errs() << "Failed to get object to merge.\n";
+    Link l;
+    l.Type = Link::LT_ResolvedTo;
+    l.Operands.push_back(i->Instance);
+    a->Links.push_back(l);
   }
 
   outs().flush();
   errs().flush();
+  outs() << "digraph {\n";
   output->printGraph(outs());
+  for (std::size_t i = 0; i < Modules.size(); ++i) {
+    Modules[i]->printGraph(outs());
+  }
+  outs() << "}\n";
 
   return 0;
 }

@@ -33,7 +33,8 @@ public:
 
   enum {
     LT_Relocation,
-    LT_LocationOffsetConstraint
+    LT_LocationOffsetConstraint,
+    LT_ResolvedTo
   } Type;
 
   union {
