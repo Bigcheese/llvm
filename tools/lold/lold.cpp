@@ -27,6 +27,7 @@
 #include <algorithm>
 #include <map>
 #include <string>
+#include <sstream>
 #include <vector>
 using namespace llvm;
 using namespace object;
@@ -155,6 +156,32 @@ struct FindAtomRefString {
   }
 };
 
+static std::string xmlencode(StringRef s) {
+  std::stringstream m;
+  for (StringRef::const_iterator i = s.begin(), e = s.end(); i != e; ++i) {
+    switch (*i) {
+      case '<':
+        m << "&lt;";
+        break;
+      case '>':
+        m << "&gt;";
+        break;
+      case '&':
+        m << "&amp;";
+        break;
+      case '\'':
+        m << "&apos;";
+        break;
+      case '"':
+        m << "&quot;";
+        break;
+      default:
+        m << *i;
+    }
+  }
+  return m.str();
+}
+
 int main(int argc, char **argv) {
   // Print a stack trace if we signal out.
   sys::PrintStackTraceOnErrorSignal();
@@ -275,13 +302,23 @@ int main(int argc, char **argv) {
   outs () << "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n"
           << "<gexf xmlns=\"http://www.gexf.net/1.2draft\" version=\"1.2\" xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\" xsi:schemaLocation=\"http://www.gexf.net/1.2draft http://www.gexf.net/1.2draft/gexf.xsd\">\n"
           << "<graph defaultedgetype=\"directed\">\n"
+          << "<attributes class=\"node\">\n"
+          << "<attribute id=\"0\" title=\"Module\" type=\"string\"/>\n"
+          << "<attribute id=\"1\" title=\"External\" type=\"boolean\"/>\n"
+          << "</attributes>\n"
           << "<nodes>\n";
 
   for (std::size_t i = 0; i < Modules.size(); ++i) {
     for (Module::atom_iterator ai = Modules[i]->atom_begin(),
                                ae = Modules[i]->atom_end(); ai != ae; ++ai) {
       outs() << "<node id=\"" << "atom" << ai
-             << "\" label=\"" << ai->_Name.str() << "\" />\n";
+             << "\" label=\"" << xmlencode(ai->_Name.str()) << "\">\n"
+             << "<attvalues>\n"
+             << "<attvalue for=\"0\" value=\""
+             << Modules[i]->ObjName.str() << "\"/>\n"
+             << "<attvalue for=\"1\" value=\"" << (ai->External ? "true" : "false") << "\"/>\n"
+             << "</attvalues>\n"
+             << "</node>\n";
     }
   }
   outs () << "</nodes>\n"
