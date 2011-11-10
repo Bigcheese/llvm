@@ -144,7 +144,7 @@ error_code Module::mergeObject(ObjectFile *o) {
         if (End == Start) // Empty
           a->Contents = StringRef();
         else
-          a->Contents = Bytes.substr(Start, Start - End);
+          a->Contents = Bytes.substr(Start, End - Start);
         a->Defined = true;
         if (prev && si != 0) {
           Link l;
