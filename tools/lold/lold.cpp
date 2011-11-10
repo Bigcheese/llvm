@@ -19,6 +19,7 @@
 #include "llvm/Object/ObjectFile.h"
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/CommandLine.h"
+#include "llvm/Support/Endian.h"
 #include "llvm/Support/FileSystem.h"
 #include "llvm/Support/ManagedStatic.h"
 #include "llvm/Support/PrettyStackTrace.h"
@@ -191,6 +192,17 @@ static std::string xmlencode(StringRef s) {
   return m.str();
 }
 
+struct coff_import_header {
+  support::ulittle16_t Sig1;
+  support::ulittle16_t Sig2;
+  support::ulittle16_t Version;
+  support::ulittle16_t Machine;
+  support::ulittle32_t TimeDateStamp;
+  support::ulittle32_t SizeOfData;
+  support::ulittle16_t OrdinalHint;
+  support::ulittle16_t TypeInfo;
+};
+
 int main(int argc, char **argv) {
   // Print a stack trace if we signal out.
   sys::PrintStackTraceOnErrorSignal();
@@ -229,6 +241,8 @@ int main(int argc, char **argv) {
   std::vector<Module*> Modules;
   std::map<ObjectFile*, Module*> ModMap;
   std::map<Archive::child_iterator, ObjectFile*> ChildMap;
+  typedef std::map<Name, Module*> ImportMap_t;
+  ImportMap_t ImportMap;
 
   // Create empty module for output.
   OwningPtr<Module> output(new Module(C));
@@ -252,7 +266,7 @@ int main(int argc, char **argv) {
       continue;
     }
 
-    // errs() << i->Name.str() << " -> [" << i->Priority << "]\n";
+    errs() << i->Name.str() << " -> [" << i->Priority << "]\n";
 
     if (!i->Instance) {
       ObjectFile *o = 0;
@@ -263,11 +277,45 @@ int main(int argc, char **argv) {
           o = i->Obj = ChildMap[i->Member];
         } else {
           OwningPtr<Binary> b;
-          if (error(i->Member->getAsBinary(b))) {
-            StringRef name;
-            if (!i->Member->getName(name))
-              errs() << name << "\n";
-            continue;
+          if (error_code ec = i->Member->getAsBinary(b)) {
+            if (ec == object_error::invalid_file_type) {
+              // Attempt to open it as an import entry.
+              OwningPtr<MemoryBuffer> data(i->Member->getBuffer());
+              const coff_import_header *cih =
+                reinterpret_cast<const coff_import_header*>(
+                  data->getBufferStart());
+              if (cih->Sig1 != 0 || cih->Sig2 != 0xffff) {
+                error(ec);
+                StringRef name;
+                if (!i->Member->getName(name))
+                  errs() << name << "\n";
+                continue;
+              }
+              // We have a valid import entry. Get the module for it and add it.
+              const char *symname = data->getBufferStart()
+                                    + sizeof(coff_import_header);
+              const char *dllname = symname + strlen(symname) + 1;
+              Name DLLName = C.getName(dllname);
+              ImportMap_t::const_iterator imci = ImportMap.find(DLLName);
+              if (imci == ImportMap.end()) {
+                Module *m = new Module(C);
+                m->ObjName = DLLName;
+                Modules.push_back(m);
+                imci = ImportMap.insert(std::make_pair(DLLName, m)).first;
+              }
+              Module *m = imci->second;
+              Atom *a = m->getOrCreateAtom(i->Name);
+              a->External = true;
+              a->Defined = true;
+              i->Instance = a;
+              goto dolink;
+            } else {
+              error(ec);
+              StringRef name;
+              if (!i->Member->getName(name))
+                errs() << name << "\n";
+              continue;
+            }
           }
           o = dyn_cast<ObjectFile>(b.get());
           if (o) {
@@ -299,6 +347,7 @@ int main(int argc, char **argv) {
         errs() << "Failed to get object to merge.\n";
     }
 
+  dolink:
     Link l;
     l.Type = Link::LT_ResolvedTo;
     l.Operands.push_back(i->Instance);
