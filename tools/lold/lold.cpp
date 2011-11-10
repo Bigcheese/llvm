@@ -37,6 +37,15 @@ static cl::list<std::string>
                  cl::desc("<input object files>"),
                  cl::ZeroOrMore);
 
+static cl::opt<bool>
+  PrintDOT("dot");
+
+static cl::opt<bool>
+  PrintGEXF("gexf");
+
+static cl::opt<bool>
+  PrintSymtab("symtab");
+
 static StringRef ToolName;
 
 static bool error(error_code ec) {
@@ -200,13 +209,21 @@ int main(int argc, char **argv) {
   // Sort symbol table by name and then priority.
   std::sort(Symbtab.begin(), Symbtab.end());
 
-#if 0
-  // Print it!
-  for (std::vector<AtomRef>::const_iterator i = Symbtab.begin(),
-                                            e = Symbtab.end(); i != e; ++i) {
-    outs() << i->Name.str() << " -> [" << i->Priority << "]" << i->Path << "\n";
+  if (PrintSymtab) {
+    // Print it!
+    for (std::vector<AtomRef>::const_iterator i = Symbtab.begin(),
+                                              e = Symbtab.end(); i != e; ++i) {
+      outs() << i->Name.str() << " -> [" << i->Priority << "]";
+      if (i->Obj)
+        outs() << i->Obj->getFileName();
+      else if (i->Arch) {
+        StringRef name;
+        i->Member->getName(name);
+        outs() << i->Arch->getFileName() << "/" << name;
+      }
+      outs() << "\n";
+    }
   }
-#endif
 
   std::vector<Atom*> UndefinedExternals;
   std::vector<Module*> Modules;
@@ -290,62 +307,62 @@ int main(int argc, char **argv) {
 
   outs().flush();
   errs().flush();
-#if 0
-  outs() << "digraph {\n";
-  output->printGraph(outs());
-  for (std::size_t i = 0; i < Modules.size(); ++i) {
-    Modules[i]->printGraph(outs());
-  }
-  outs() << "}\n";
-#endif
-#if 1
-  outs () << "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n"
-          << "<gexf xmlns=\"http://www.gexf.net/1.2draft\" version=\"1.2\" xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\" xsi:schemaLocation=\"http://www.gexf.net/1.2draft http://www.gexf.net/1.2draft/gexf.xsd\">\n"
-          << "<graph defaultedgetype=\"directed\">\n"
-          << "<attributes class=\"node\">\n"
-          << "<attribute id=\"0\" title=\"Module\" type=\"string\"/>\n"
-          << "<attribute id=\"1\" title=\"External\" type=\"boolean\"/>\n"
-          << "</attributes>\n"
-          << "<nodes>\n";
-
-  for (std::size_t i = 0; i < Modules.size(); ++i) {
-    for (Module::atom_iterator ai = Modules[i]->atom_begin(),
-                               ae = Modules[i]->atom_end(); ai != ae; ++ai) {
-      outs() << "<node id=\"" << "atom" << ai
-             << "\" label=\"" << xmlencode(ai->_Name.str()) << "\">\n"
-             << "<attvalues>\n"
-             << "<attvalue for=\"0\" value=\""
-             << Modules[i]->ObjName.str() << "\"/>\n"
-             << "<attvalue for=\"1\" value=\"" << (ai->External ? "true" : "false") << "\"/>\n"
-             << "</attvalues>\n"
-             << "</node>\n";
+  if (PrintDOT) {
+    outs() << "digraph {\n";
+    for (std::size_t i = 0; i < Modules.size(); ++i) {
+      Modules[i]->printGraph(outs());
     }
+    outs() << "}\n";
   }
-  outs () << "</nodes>\n"
-          << "<edges>\n";
 
-  int id = 0;
-  for (std::size_t i = 0; i < Modules.size(); ++i) {
-    for (Module::atom_iterator ai = Modules[i]->atom_begin(),
-                               ae = Modules[i]->atom_end(); ai != ae; ++ai) {
-      for (std::vector<Link>::const_iterator li = ai->Links.begin(),
-                                             le = ai->Links.end();
-                                             li != le; ++li) {
-        for (Link::operand_iterator oi = li->Operands.begin(),
-                                    oe = li->Operands.end();
-                                    oi != oe; ++oi) {
-          outs() << "<edge id=\"" << id++ << "\""
-                 << " source=\"" << "atom" << ai << "\""
-                 << " target=\"" << "atom" << *oi << "\"/>\n";
+  if (PrintGEXF) {
+    outs () << "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n"
+            << "<gexf xmlns=\"http://www.gexf.net/1.2draft\" version=\"1.2\" xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\" xsi:schemaLocation=\"http://www.gexf.net/1.2draft http://www.gexf.net/1.2draft/gexf.xsd\">\n"
+            << "<graph defaultedgetype=\"directed\">\n"
+            << "<attributes class=\"node\">\n"
+            << "<attribute id=\"0\" title=\"Module\" type=\"string\"/>\n"
+            << "<attribute id=\"1\" title=\"External\" type=\"boolean\"/>\n"
+            << "</attributes>\n"
+            << "<nodes>\n";
+
+    for (std::size_t i = 0; i < Modules.size(); ++i) {
+      for (Module::atom_iterator ai = Modules[i]->atom_begin(),
+                                 ae = Modules[i]->atom_end(); ai != ae; ++ai) {
+        outs() << "<node id=\"" << "atom" << ai
+               << "\" label=\"" << xmlencode(ai->_Name.str()) << "\">\n"
+               << "<attvalues>\n"
+               << "<attvalue for=\"0\" value=\""
+               << Modules[i]->ObjName.str() << "\"/>\n"
+               << "<attvalue for=\"1\" value=\"" << (ai->External ? "true" : "false") << "\"/>\n"
+               << "</attvalues>\n"
+               << "</node>\n";
+      }
+    }
+    outs () << "</nodes>\n"
+            << "<edges>\n";
+
+    int id = 0;
+    for (std::size_t i = 0; i < Modules.size(); ++i) {
+      for (Module::atom_iterator ai = Modules[i]->atom_begin(),
+                                 ae = Modules[i]->atom_end(); ai != ae; ++ai) {
+        for (std::vector<Link>::const_iterator li = ai->Links.begin(),
+                                               le = ai->Links.end();
+                                               li != le; ++li) {
+          for (Link::operand_iterator oi = li->Operands.begin(),
+                                      oe = li->Operands.end();
+                                      oi != oe; ++oi) {
+            outs() << "<edge id=\"" << id++ << "\""
+                   << " source=\"" << "atom" << ai << "\""
+                   << " target=\"" << "atom" << *oi << "\"/>\n";
+          }
         }
       }
     }
-  }
 
-  outs() << "</edges>\n"
-         << "</graph>\n"
-         << "</gexf>\n";
-#endif
+    outs() << "</edges>\n"
+           << "</graph>\n"
+           << "</gexf>\n";
+  }
 
   return 0;
 }
