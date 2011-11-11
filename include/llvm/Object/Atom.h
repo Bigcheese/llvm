@@ -58,6 +58,7 @@ protected:
 public:
   unsigned Defined  : 1;
   unsigned External : 1;
+  unsigned Import : 1;
   StringRef Contents;
   Name _Name;
   std::vector<Link> Links;

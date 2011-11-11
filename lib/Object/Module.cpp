@@ -236,3 +236,11 @@ void Module::printGraph(raw_ostream &o) {
     }
   }
 }
+
+void Module::mergeModule(Module *m) {
+  for (AtomList_t::iterator i = m->atom_begin(),
+                            e = m->atom_end(); i != e;) {
+    Atoms.push_back(i);
+    i = m->Atoms.erase(i);
+  }
+}

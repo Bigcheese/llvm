@@ -15,7 +15,8 @@ using namespace object;
 
 Atom::Atom()
   : Defined(false)
-  , External(false) {
+  , External(false)
+  , Import(false) {
 }
 
 Atom::~Atom() {

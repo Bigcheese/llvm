@@ -51,6 +51,7 @@ public:
   ~Module();
 
   error_code mergeObject(ObjectFile *obj);
+  void mergeModule(Module *m);
 
   Context &getContext() const { return C; }
   Atom *getOrCreateAtom(Name name);

@@ -307,6 +307,7 @@ int main(int argc, char **argv) {
               Atom *a = m->getOrCreateAtom(i->Name);
               a->External = true;
               a->Defined = true;
+              a->Import = true;
               i->Instance = a;
               goto dolink;
             } else {
@@ -352,6 +353,10 @@ int main(int argc, char **argv) {
     l.Type = Link::LT_ResolvedTo;
     l.Operands.push_back(i->Instance);
     a->Links.push_back(l);
+  }
+
+  for (std::size_t i = 1; i < Modules.size(); ++i) {
+    output->mergeModule(Modules[i]);
   }
 
   outs().flush();
