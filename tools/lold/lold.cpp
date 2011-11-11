@@ -360,6 +360,17 @@ int main(int argc, char **argv) {
     output->mergeModule(Modules[i]);
   }
 
+  // Collapse all LT_ResolvedTo's.
+  for (Module::atom_iterator i = output->atom_begin(),
+                             e = output->atom_end(); i != e; ++i) {
+    for (Atom::LinkList_t::iterator li = i->Links.begin(),
+                                    le = i->Links.end(); li != le; ++li) {
+      if (li->Type == Link::LT_ResolvedTo) {
+        output->replaceAllUsesWith(i, li->Operands[0]);
+      }
+    }
+  }
+
   outs().flush();
   errs().flush();
   if (PrintDOT) {
@@ -400,9 +411,9 @@ int main(int argc, char **argv) {
     for (std::size_t i = 0; i < Modules.size(); ++i) {
       for (Module::atom_iterator ai = Modules[i]->atom_begin(),
                                  ae = Modules[i]->atom_end(); ai != ae; ++ai) {
-        for (std::vector<Link>::const_iterator li = ai->Links.begin(),
-                                               le = ai->Links.end();
-                                               li != le; ++li) {
+        for (Atom::LinkList_t::iterator li = ai->Links.begin(),
+                                        le = ai->Links.end();
+                                        li != le; ++li) {
           for (Link::operand_iterator oi = li->Operands.begin(),
                                       oe = li->Operands.end();
                                       oi != oe; ++oi) {

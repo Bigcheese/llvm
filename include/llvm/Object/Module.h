@@ -62,6 +62,9 @@ public:
   ///             multiple atoms can have the same name.
   Atom *createAtom(Name name = Name());
 
+  /// @brief Replace all uses of @arg a with @arg new and return @arg a.
+  Atom *replaceAllUsesWith(Atom *a, Atom *New);
+
   atom_iterator atom_begin() { return Atoms.begin(); }
   atom_iterator atom_end()   { return Atoms.end(); }
 

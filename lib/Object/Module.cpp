@@ -210,9 +210,9 @@ void Module::printGraph(raw_ostream &o) {
   }
   o << "}\n";
   for (atom_iterator i = atom_begin(), e = atom_end(); i != e; ++i) {
-    for (std::vector<Link>::const_iterator li = i->Links.begin(),
-                                           le = i->Links.end();
-                                           li != le; ++li) {
+    for (Atom::LinkList_t::iterator li = i->Links.begin(),
+                                    le = i->Links.end();
+                                    li != le; ++li) {
       o << "atom" << i << " -> {";
       for (Link::operand_iterator oi = li->Operands.begin(),
                                   oe = li->Operands.end();
@@ -239,4 +239,18 @@ void Module::printGraph(raw_ostream &o) {
 
 void Module::mergeModule(Module *m) {
   Atoms.splice(Atoms.end(), m->Atoms);
+}
+
+Atom *Module::replaceAllUsesWith(Atom *a, Atom *New) {
+  for (atom_iterator i = Atoms.begin(), e = Atoms.end(); i != e; ++i) {
+    for (Atom::LinkList_t::iterator li = i->Links.begin(),
+                                    le = i->Links.end(); li != le; ++li) {
+      for (Link::operand_iterator oi = li->Operands.begin(),
+                                  oe = li->Operands.end(); oi != oe; ++oi) {
+        if ((*oi) == a)
+          *oi = New;
+      }
+    }
+  }
+  return a;
 }

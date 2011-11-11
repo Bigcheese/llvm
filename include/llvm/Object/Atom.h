@@ -27,7 +27,7 @@ class Module;
 class Link {
 public:
   typedef SmallVector<Atom*, 1> OperandList_t;
-  typedef OperandList_t::const_iterator operand_iterator;
+  typedef OperandList_t::iterator operand_iterator;
 
   OperandList_t Operands;
 
@@ -56,12 +56,14 @@ protected:
   virtual ~Atom();
 
 public:
+  typedef std::vector<Link> LinkList_t;
+
   unsigned Defined  : 1;
   unsigned External : 1;
   unsigned Import : 1;
   StringRef Contents;
   Name _Name;
-  std::vector<Link> Links;
+  LinkList_t Links;
 };
 
 }
