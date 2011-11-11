@@ -58,11 +58,17 @@ protected:
 public:
   typedef std::vector<Link> LinkList_t;
 
+  enum {
+    AT_Unknown,
+    AT_Code,
+    AT_Data,
+    AT_Import
+  } Type;
   unsigned Defined  : 1;
   unsigned External : 1;
-  unsigned Import : 1;
   StringRef Contents;
   Name _Name;
+  Name ImportFrom;
   LinkList_t Links;
 };
 

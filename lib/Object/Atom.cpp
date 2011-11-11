@@ -14,9 +14,9 @@ using namespace llvm;
 using namespace object;
 
 Atom::Atom()
-  : Defined(false)
-  , External(false)
-  , Import(false) {
+  : Type(AT_Unknown)
+  , Defined(false)
+  , External(false) {
 }
 
 Atom::~Atom() {

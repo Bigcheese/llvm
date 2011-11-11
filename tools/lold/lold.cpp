@@ -307,7 +307,8 @@ int main(int argc, char **argv) {
               Atom *a = m->getOrCreateAtom(i->Name);
               a->External = true;
               a->Defined = true;
-              a->Import = true;
+              a->Type = Atom::AT_Import;
+              a->ImportFrom = DLLName;
               i->Instance = a;
               goto dolink;
             } else {
