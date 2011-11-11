@@ -355,6 +355,7 @@ int main(int argc, char **argv) {
     a->Links.push_back(l);
   }
 
+  // Stuff it all into the output module.
   for (std::size_t i = 1; i < Modules.size(); ++i) {
     output->mergeModule(Modules[i]);
   }
