@@ -67,6 +67,7 @@ public:
 
   atom_iterator atom_begin() { return Atoms.begin(); }
   atom_iterator atom_end()   { return Atoms.end(); }
+  atom_iterator erase(Atom *a) { return Atoms.erase(a); }
 
   void printGraph(raw_ostream &o);
 };

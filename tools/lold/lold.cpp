@@ -362,13 +362,21 @@ int main(int argc, char **argv) {
 
   // Collapse all LT_ResolvedTo's.
   for (Module::atom_iterator i = output->atom_begin(),
-                             e = output->atom_end(); i != e; ++i) {
-    for (Atom::LinkList_t::iterator li = i->Links.begin(),
-                                    le = i->Links.end(); li != le; ++li) {
-      if (li->Type == Link::LT_ResolvedTo) {
-        output->replaceAllUsesWith(i, li->Operands[0]);
+                             e = output->atom_end(); i != e;) {
+    if (!i->Defined && i->External) {
+      bool erased = false;
+      for (Atom::LinkList_t::iterator li = i->Links.begin(),
+                                      le = i->Links.end(); li != le; ++li) {
+        if (li->Type == Link::LT_ResolvedTo) {
+          i = output->erase(output->replaceAllUsesWith(i, li->Operands[0]));
+          erased = true;
+          break;
+        }
       }
-    }
+      if (!erased)
+        ++i;
+    } else
+      ++i;
   }
 
   outs().flush();
