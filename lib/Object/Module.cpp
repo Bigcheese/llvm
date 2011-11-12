@@ -74,6 +74,16 @@ static error_code buildSectionSymbolAndAtomMap(Module &m,
       a = atom[*i] = m.getOrCreateAtom(m.getContext().getName(name));
     if (sec != o->end_sections())
       symb[*sec].push_back(*i);
+    if (sec != o->end_sections()) {
+      bool code;
+      bool data;
+      sec->isText(code);
+      sec->isData(data);
+      if (code)
+        a->Type = Atom::AT_Code;
+      else if (data)
+        a->Type = Atom::AT_Data;
+    }
   }
   return object_error::success;
 }

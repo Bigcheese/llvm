@@ -248,8 +248,8 @@ int main(int argc, char **argv) {
   OwningPtr<Module> output(new Module(C));
   Modules.push_back(output.get());
   // Add starting atom.
-  // Atom *start = output->getOrCreateAtom(C.getName("_mainCRTStartup"));
-  Atom *start = output->getOrCreateAtom(C.getName("_main"));
+  Atom *start = output->getOrCreateAtom(C.getName("_mainCRTStartup"));
+  // Atom *start = output->getOrCreateAtom(C.getName("_main"));
   start->External = true;
   UndefinedExternals.push_back(start);
 
@@ -358,7 +358,7 @@ int main(int argc, char **argv) {
 
   // Stuff it all into the output module.
   for (std::size_t i = 1; i < Modules.size(); ++i) {
-    output->mergeModule(Modules[i]);
+  //  output->mergeModule(Modules[i]);
   }
 
   // Collapse all LT_ResolvedTo's.
@@ -397,6 +397,7 @@ int main(int argc, char **argv) {
             << "<attributes class=\"node\">\n"
             << "<attribute id=\"0\" title=\"Module\" type=\"string\"/>\n"
             << "<attribute id=\"1\" title=\"External\" type=\"boolean\"/>\n"
+            << "<attribute id=\"0\" title=\"Type\" type=\"string\"/>\n"
             << "</attributes>\n"
             << "<nodes>\n";
 
@@ -409,6 +410,21 @@ int main(int argc, char **argv) {
                << "<attvalue for=\"0\" value=\""
                << Modules[i]->ObjName.str() << "\"/>\n"
                << "<attvalue for=\"1\" value=\"" << (ai->External ? "true" : "false") << "\"/>\n"
+               << "<attvalue for=\"2\" value=\"";
+        switch (ai->Type) {
+        case Atom::AT_Code:
+          outs() << "code";
+          break;
+        case Atom::AT_Data:
+          outs() << "data";
+          break;
+        case Atom::AT_Import:
+          outs() << "import";
+          break;
+        default:
+          outs() << "unknown";
+        }
+        outs() << "\"/>\n"
                << "</attvalues>\n"
                << "</node>\n";
       }
