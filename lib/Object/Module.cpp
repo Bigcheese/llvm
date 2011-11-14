@@ -65,13 +65,13 @@ static error_code buildSectionSymbolAndAtomMap(Module &m,
       if (symb->StorageClass == COFF::IMAGE_SYM_CLASS_STATIC
           && symb->Value == 0) {
         // Create a unique name.
-        a = atom[*i] = m.createAtom(m.getContext().getName(name));
+        a = atom[*i] = m.createAtom<Atom>(m.getContext().getName(name));
       } else
-        a = atom[*i] = m.getOrCreateAtom(m.getContext().getName(name));
+        a = atom[*i] = m.getOrCreateAtom<Atom>(m.getContext().getName(name));
       if (symb->StorageClass == COFF::IMAGE_SYM_CLASS_EXTERNAL)
         a->External = true;
     } else
-      a = atom[*i] = m.getOrCreateAtom(m.getContext().getName(name));
+      a = atom[*i] = m.getOrCreateAtom<Atom>(m.getContext().getName(name));
     if (sec != o->end_sections())
       symb[*sec].push_back(*i);
     if (sec != o->end_sections()) {
@@ -123,7 +123,7 @@ error_code Module::mergeObject(ObjectFile *o) {
     if (Symbols.empty()) {
       StringRef name;
       if (error_code ec = i->getName(name)) return ec;
-      Atom *a = getOrCreateAtom(C.getName(name));
+      Atom *a = getOrCreateAtom<Atom>(C.getName(name));
       if (error_code ec = i->getContents(a->Contents)) return ec;
       a->Defined = true;
     } else {
@@ -183,29 +183,6 @@ error_code Module::mergeObject(ObjectFile *o) {
     }
   }
   return object_error::success;
-}
-
-Atom *Module::getOrCreateAtom(Name name) {
-  AtomMap_t::const_iterator atom = AtomMap.find(name);
-  if (atom == AtomMap.end()) {
-    Atom *a = new Atom;
-    a->_Name = name;
-    Atoms.push_back(a);
-    AtomMap.insert(std::make_pair(name, a));
-    return a;
-  } else
-    return atom->second;
-}
-
-Atom *Module::createAtom(Name name) {
-  Atom *a = new Atom;
-  if (name.str().size() == 0)
-    a->_Name = C.getName(Twine("atom") + Twine(intptr_t(a)));
-  else
-    a->_Name = name;
-  Atoms.push_back(a);
-  // Don't add to AtomMap, as it should not be looked up by name.
-  return a;
 }
 
 void Module::printGraph(raw_ostream &o) {

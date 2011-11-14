@@ -46,13 +46,14 @@ public:
 class Atom : public ilist_node<Atom> {
   Atom(const Atom&); // = delete;
   Atom &operator=(const Atom&); // = delete;
+
+protected:
   Atom();
 
   friend class Module;
   friend struct ilist_node_traits<Atom>;
   friend struct ilist_sentinel_traits<Atom>;
 
-protected:
   virtual ~Atom();
 
 public:

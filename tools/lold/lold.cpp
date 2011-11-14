@@ -18,6 +18,7 @@
 #include "llvm/Object/Module.h"
 #include "llvm/Object/ObjectFile.h"
 #include "llvm/Support/Casting.h"
+#include "llvm/Support/COFF.h"
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/Endian.h"
 #include "llvm/Support/FileSystem.h"
@@ -32,6 +33,7 @@
 #include <vector>
 using namespace llvm;
 using namespace object;
+using namespace support;
 
 static cl::list<std::string>
   InputFilenames(cl::Positional,
@@ -203,6 +205,173 @@ struct coff_import_header {
   support::ulittle16_t TypeInfo;
 };
 
+class DLLImportData : public Atom {
+  typedef std::vector<COFF::ImportDirectoryTableEntry> IDT_t;
+  typedef std::vector<COFF::ImportLookupTableEntry32> ILT_t;
+  typedef std::vector<std::pair<uint16_t, Name> > HintNameTable_t;
+  typedef std::vector<Name> NameTable_t;
+
+  IDT_t IDT;
+  ILT_t ILT;
+  HintNameTable_t HintNameTable;
+  uint32_t currentoffset;
+  NameTable_t NameTable;
+
+  std::vector<char> Data;
+  uint32_t IATStart;
+  uint32_t IDTStart;
+  uint32_t ILTStart;
+  uint32_t HintNameTableStart;
+  uint32_t NameTableStart;
+
+  friend class Module;
+
+protected:
+  DLLImportData()
+    : currentoffset(0) {}
+
+public:
+  uint32_t addImport(Atom *a) {
+    assert(a->Type == Atom::AT_Import && "a must be an AT_Import!");
+
+    // Only support one imported library for now.
+    if (IDT.empty()) {
+      COFF::ImportDirectoryTableEntry IDTe;
+      IDTe.ImportLookupTableRVA  = 0;
+      IDTe.TimeDateStamp         = 0;
+      IDTe.ForwarderChain        = 0;
+      IDTe.NameRVA               = NameTable.size();
+      IDTe.ImportAddressTableRVA = 0;
+      IDT.push_back(IDTe);
+      NameTable.push_back(a->ImportFrom);
+    }
+
+    COFF::ImportLookupTableEntry32 ILTe;
+    ILTe.setHintNameRVA(currentoffset);
+    std::size_t len = a->_Name.str().size() + 1;
+    if (len & 1)
+        ++len;
+    currentoffset += 2 + len;
+    HintNameTable.push_back(std::make_pair(0, a->_Name));
+    ILT.push_back(ILTe);
+
+    return (ILT.size() - 1) * 4;
+  }
+
+  uint32_t layout() {
+    uint32_t total = 0;
+
+    IATStart = 0;
+    total += ILT.size() * sizeof(COFF::ImportLookupTableEntry32);
+    IDTStart = total;
+    total += IDT.size() * sizeof(COFF::ImportDirectoryTableEntry);
+    ILTStart = total;
+    total += ILT.size() * sizeof(COFF::ImportLookupTableEntry32);
+
+    HintNameTableStart = total;
+    for (HintNameTable_t::const_iterator
+           i = HintNameTable.begin(), e = HintNameTable.end(); i != e; ++i) {
+      std::size_t len = i->second.str().size() + 1;
+      if (len & 1)
+        ++len;
+      total += 2 + len;
+    }
+
+    NameTableStart = total;
+    for (NameTable_t::const_iterator i = NameTable.begin(),
+                                     e = NameTable.end(); i != e; ++i) {
+      total += i->str().size() + 1;
+    }
+
+    return total;
+  }
+
+  void finalize(uint32_t SectionBaseRVA) {
+    // Add null final entries.
+    COFF::ImportDirectoryTableEntry IDTe;
+    std::memset(&IDTe, 0, sizeof(IDTe));
+    IDT.push_back(IDTe);
+
+    COFF::ImportLookupTableEntry32 ILTe;
+    std::memset(&ILTe, 0, sizeof(ILTe));
+    ILT.push_back(ILTe);
+
+    // Figure out where everything goes and reserve the size.
+    Data.resize(layout());
+
+    // Fixup references.
+    for (ILT_t::iterator i = ILT.begin(), e = ILT.end() - 1; i != e; ++i) {
+      i->setHintNameRVA(SectionBaseRVA
+                        + HintNameTableStart
+                        + i->getHintNameRVA());
+    }
+
+    for (IDT_t::iterator i = IDT.begin(), e = IDT.end() - 1; i != e; ++i) {
+      i->ImportLookupTableRVA = SectionBaseRVA + ILTStart;
+      i->NameRVA = SectionBaseRVA + NameTableStart + i->NameRVA;
+      i->ImportAddressTableRVA = SectionBaseRVA + IATStart;
+    }
+
+    // Write out the data to Data and set the section contents.
+    char *output = &Data.front();
+    // IAT.
+    for (ILT_t::iterator i = ILT.begin(), e = ILT.end(); i != e; ++i) {
+      endian::write_le<uint32_t, unaligned>(output, i->data);
+      output += sizeof(uint32_t);
+    }
+    // IDT.
+    for (IDT_t::iterator i = IDT.begin(), e = IDT.end(); i != e; ++i) {
+      endian::write_le<uint32_t, unaligned>(output, i->ImportLookupTableRVA);
+      output += sizeof(uint32_t);
+      endian::write_le<uint32_t, unaligned>(output, i->TimeDateStamp);
+      output += sizeof(uint32_t);
+      endian::write_le<uint32_t, unaligned>(output, i->ForwarderChain);
+      output += sizeof(uint32_t);
+      endian::write_le<uint32_t, unaligned>(output, i->NameRVA);
+      output += sizeof(uint32_t);
+      endian::write_le<uint32_t, unaligned>(output, i->ImportAddressTableRVA);
+      output += sizeof(uint32_t);
+    }
+    // ILT.
+    for (ILT_t::iterator i = ILT.begin(), e = ILT.end(); i != e; ++i) {
+      endian::write_le<uint32_t, unaligned>(output, i->data);
+      output += sizeof(uint32_t);
+    }
+    // Hint/Name Table.
+    for (HintNameTable_t::const_iterator
+           i = HintNameTable.begin(), e = HintNameTable.end(); i != e; ++i) {
+      endian::write_le<uint16_t, aligned>(output, i->first);
+      output += sizeof(uint16_t);
+      std::memcpy(output, i->second.str().data(), i->second.str().size());
+      output += i->second.str().size();
+      *output++ = 0;
+      if ((i->second.str().size() + 1) & 1)
+        *output++ = 0;
+    }
+    // Name table.
+    for (NameTable_t::const_iterator i = NameTable.begin(),
+                                     e = NameTable.end(); i != e; ++i) {
+      std::memcpy(output, i->str().data(), i->str().size());
+      output += i->str().size();
+      *output++ = 0;
+    }
+
+    // Set contents.
+    Contents = StringRef(&Data.front(), Data.size());
+
+    // Clear out the data we generated from.
+    IDT.clear();
+    ILT.clear();
+    HintNameTable.clear();
+    currentoffset = 0;
+    NameTable.clear();
+  }
+
+  void dump() {
+
+  }
+};
+
 int main(int argc, char **argv) {
   // Print a stack trace if we signal out.
   sys::PrintStackTraceOnErrorSignal();
@@ -248,8 +417,8 @@ int main(int argc, char **argv) {
   OwningPtr<Module> output(new Module(C));
   Modules.push_back(output.get());
   // Add starting atom.
-  Atom *start = output->getOrCreateAtom(C.getName("_mainCRTStartup"));
-  // Atom *start = output->getOrCreateAtom(C.getName("_main"));
+  // Atom *start = output->getOrCreateAtom<Atom>(C.getName("_mainCRTStartup"));
+  Atom *start = output->getOrCreateAtom<Atom>(C.getName("_main"));
   start->External = true;
   UndefinedExternals.push_back(start);
 
@@ -304,7 +473,7 @@ int main(int argc, char **argv) {
                 imci = ImportMap.insert(std::make_pair(DLLName, m)).first;
               }
               Module *m = imci->second;
-              Atom *a = m->getOrCreateAtom(i->Name);
+              Atom *a = m->getOrCreateAtom<Atom>(i->Name);
               a->External = true;
               a->Defined = true;
               a->Type = Atom::AT_Import;
@@ -330,13 +499,13 @@ int main(int argc, char **argv) {
 
       if (o) {
         if (ModMap.find(o) != ModMap.end()) {
-          i->Instance = ModMap[o]->getOrCreateAtom(i->Name);
+          i->Instance = ModMap[o]->getOrCreateAtom<Atom>(i->Name);
         } else {
           Module *m = new Module(C);
           Modules.push_back(m);
           ModMap[o] = m;
           if (error(m->mergeObject(o))) continue;
-          i->Instance = m->getOrCreateAtom(i->Name);
+          i->Instance = m->getOrCreateAtom<Atom>(i->Name);
           // FIXME: This is horribly inefficient, mergeObject should populate
           //        UndefinedExternals.
           for (Module::atom_iterator ai = m->atom_begin(),
@@ -354,30 +523,6 @@ int main(int argc, char **argv) {
     l.Type = Link::LT_ResolvedTo;
     l.Operands.push_back(i->Instance);
     a->Links.push_back(l);
-  }
-
-  // Stuff it all into the output module.
-  for (std::size_t i = 1; i < Modules.size(); ++i) {
-  //  output->mergeModule(Modules[i]);
-  }
-
-  // Collapse all LT_ResolvedTo's.
-  for (Module::atom_iterator i = output->atom_begin(),
-                             e = output->atom_end(); i != e;) {
-    if (!i->Defined && i->External) {
-      bool erased = false;
-      for (Atom::LinkList_t::iterator li = i->Links.begin(),
-                                      le = i->Links.end(); li != le; ++li) {
-        if (li->Type == Link::LT_ResolvedTo) {
-          i = output->erase(output->replaceAllUsesWith(i, li->Operands[0]));
-          erased = true;
-          break;
-        }
-      }
-      if (!erased)
-        ++i;
-    } else
-      ++i;
   }
 
   outs().flush();
@@ -454,6 +599,39 @@ int main(int argc, char **argv) {
            << "</graph>\n"
            << "</gexf>\n";
   }
+
+  // Stuff it all into the output module.
+  for (std::size_t i = 1; i < Modules.size(); ++i) {
+    output->mergeModule(Modules[i]);
+  }
+
+  // Collapse all LT_ResolvedTo's.
+  for (Module::atom_iterator i = output->atom_begin(),
+                             e = output->atom_end(); i != e;) {
+    if (!i->Defined && i->External) {
+      bool erased = false;
+      for (Atom::LinkList_t::iterator li = i->Links.begin(),
+                                      le = i->Links.end(); li != le; ++li) {
+        if (li->Type == Link::LT_ResolvedTo) {
+          i = output->erase(output->replaceAllUsesWith(i, li->Operands[0]));
+          erased = true;
+          break;
+        }
+      }
+      if (!erased)
+        ++i;
+    } else
+      ++i;
+  }
+
+  // Build IAT.
+  DLLImportData *did = output->createAtom<DLLImportData>(C.getName(".idata"));
+  for (Module::atom_iterator i = output->atom_begin(),
+                             e = output->atom_end(); i != e; ++i) {
+    if (i->Type == Atom::AT_Import)
+      did->addImport(i);
+  }
+
 
   return 0;
 }
