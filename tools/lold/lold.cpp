@@ -624,14 +624,26 @@ int main(int argc, char **argv) {
       ++i;
   }
 
+  // Allocate space.
+  uint32_t StartPE = sizeof(COFF::DOSHeader);
+  uint32_t StartSections = StartPE
+                           + sizeof(COFF::PEHeader)
+                           + (sizeof(COFF::DataDirectory) * 16);
+  // For now we arbitrarily have 3 sections.
+  uint32_t EndSections = StartSections + sizeof(COFF::section) * 3;
+  uint32_t StartCode   = 0x1000;
+  uint32_t StartData   = 0x2000;
+  uint32_t StartIData  = 0x3000;
+
   // Build IAT.
   DLLImportData *did = output->createAtom<DLLImportData>(C.getName(".idata"));
+  did->RVA = StartIData;
   for (Module::atom_iterator i = output->atom_begin(),
                              e = output->atom_end(); i != e; ++i) {
     if (i->Type == Atom::AT_Import)
-      did->addImport(i);
+      i->RVA = did->RVA + did->addImport(i);
   }
-
+  did->finalize(did->RVA);
 
   return 0;
 }

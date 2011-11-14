@@ -16,7 +16,8 @@ using namespace object;
 Atom::Atom()
   : Type(AT_Unknown)
   , Defined(false)
-  , External(false) {
+  , External(false)
+  , RVA(0) {
 }
 
 Atom::~Atom() {

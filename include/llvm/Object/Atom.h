@@ -71,6 +71,7 @@ public:
   Name _Name;
   Name ImportFrom;
   LinkList_t Links;
+  uint64_t RVA;
 };
 
 }
