@@ -31,7 +31,7 @@ public:
 
   OperandList_t Operands;
 
-  enum {
+  enum LinkType {
     LT_Relocation,
     LT_LocationOffsetConstraint,
     LT_ResolvedTo

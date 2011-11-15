@@ -23,6 +23,7 @@
 #include "llvm/Support/Endian.h"
 #include "llvm/Support/FileSystem.h"
 #include "llvm/Support/ManagedStatic.h"
+#include "llvm/Support/MemoryBuffer.h"
 #include "llvm/Support/PrettyStackTrace.h"
 #include "llvm/Support/raw_ostream.h"
 #include "llvm/Support/Signals.h"
@@ -231,6 +232,20 @@ protected:
     : currentoffset(0) {}
 
 public:
+  COFF::DataDirectory getIAT() const {
+    COFF::DataDirectory dd;
+    dd.RelativeVirtualAddress = RVA + IATStart;
+    dd.Size = IDTStart - IATStart;
+    return dd;
+  }
+
+  COFF::DataDirectory getIDT() const {
+    COFF::DataDirectory dd;
+    dd.RelativeVirtualAddress = RVA + IDTStart;
+    dd.Size = ILTStart - IDTStart;
+    return dd;
+  }
+
   uint32_t addImport(Atom *a) {
     assert(a->Type == Atom::AT_Import && "a must be an AT_Import!");
 
@@ -371,6 +386,27 @@ public:
 
   }
 };
+
+Atom *getRoot(Atom *a) {
+  for (Atom::LinkList_t::const_iterator li = a->Links.begin(),
+                                        le = a->Links.end(); li != le; ++li) {
+    if (li->Type == Link::LT_LocationOffsetConstraint) {
+      return getRoot(li->Operands[0]);
+    }
+  }
+  return a;
+}
+
+uint64_t getDistanceToRoot(Atom *a) {
+  uint64_t total = 0;
+  for (Atom::LinkList_t::const_iterator li = a->Links.begin(),
+                                        le = a->Links.end(); li != le; ++li) {
+    if (li->Type == Link::LT_LocationOffsetConstraint) {
+      total += getDistanceToRoot(li->Operands[0]) + li->ConstraintDistance;
+    }
+  }
+  return total;
+}
 
 int main(int argc, char **argv) {
   // Print a stack trace if we signal out.
@@ -632,8 +668,11 @@ int main(int argc, char **argv) {
   // For now we arbitrarily have 3 sections.
   uint32_t EndSections = StartSections + sizeof(COFF::section) * 3;
   uint32_t StartCode   = 0x1000;
+  uint32_t CurrentCode = StartCode;
   uint32_t StartData   = 0x2000;
+  uint32_t CurrentData = StartData;
   uint32_t StartIData  = 0x3000;
+  uint32_t EndFile     = 0x4000;
 
   // Build IAT.
   DLLImportData *did = output->createAtom<DLLImportData>(C.getName(".idata"));
@@ -644,6 +683,224 @@ int main(int argc, char **argv) {
       i->RVA = did->RVA + did->addImport(i);
   }
   did->finalize(did->RVA);
+
+  // Allocate RVAs.
+  // Find roots and groups.
+  // FIXME: This doesn't handle multiple LocationOffsetConstraints in one atom
+  //        at all :(.
+  std::vector<Atom*> Roots;
+  std::map<Atom*, std::vector<Atom*> > Groups;
+  for (Module::atom_iterator i = output->atom_begin(),
+                             e = output->atom_end(); i != e; ++i) {
+    Atom *a = getRoot(i);
+    if (a == i) {
+      Roots.push_back(a);
+    } else {
+      Groups[a].push_back(i);
+    }
+  }
+
+  // Now we can layout!
+  for (std::vector<Atom*>::iterator i = Roots.begin(),
+                                    e = Roots.end(); i != e; ++i) {
+    uint32_t *current;
+    switch ((*i)->Type) {
+    case Atom::AT_Code:
+      current = &CurrentCode;
+      break;
+    case Atom::AT_Data:
+      current = &CurrentData;
+      break;
+    default:
+      continue;
+    }
+
+    (*i)->RVA = *current;
+    // Setup group.
+    for (std::vector<Atom*>::iterator gi = Groups[*i].begin(),
+                                      ge = Groups[*i].end(); gi != ge; ++gi) {
+      uint64_t dist = getDistanceToRoot(*gi);
+      (*gi)->RVA = dist + (*i)->RVA;
+      *current += dist;
+    }
+  }
+
+  // Everything now has an RVA. Write data!
+  std::vector<char> out(EndFile);
+  char *fout = &out.front();
+  COFF::DOSHeader dh;
+  std::memset(&dh, 0, sizeof(dh));
+  dh.Magic = 0x5A4D; // "MZ"
+  dh.AddressOfNewExeHeader = StartPE;
+  endian::write_le<uint16_t, aligned>(fout, dh.Magic);
+  fout += sizeof(uint16_t);
+  endian::write_le<uint16_t, aligned>(fout, dh.UsedBytesInTheLastPage);
+  fout += sizeof(uint16_t);
+  endian::write_le<uint16_t, aligned>(fout, dh.FileSizeInPages);
+  fout += sizeof(uint16_t);
+  endian::write_le<uint16_t, aligned>(fout, dh.NumberOfRelocationItems);
+  fout += sizeof(uint16_t);
+  endian::write_le<uint16_t, aligned>(fout, dh.HeaderSizeInParagraphs);
+  fout += sizeof(uint16_t);
+  endian::write_le<uint16_t, aligned>(fout, dh.MinimumExtraParagraphs);
+  fout += sizeof(uint16_t);
+  endian::write_le<uint16_t, aligned>(fout, dh.MaximumExtraParagraphs);
+  fout += sizeof(uint16_t);
+  endian::write_le<uint16_t, aligned>(fout, dh.InitialRelativeSS);
+  fout += sizeof(uint16_t);
+  endian::write_le<uint16_t, aligned>(fout, dh.InitialSP);
+  fout += sizeof(uint16_t);
+  endian::write_le<uint16_t, aligned>(fout, dh.Checksum);
+  fout += sizeof(uint16_t);
+  endian::write_le<uint16_t, aligned>(fout, dh.InitialIP);
+  fout += sizeof(uint16_t);
+  endian::write_le<uint16_t, aligned>(fout, dh.InitialRelativeCS);
+  fout += sizeof(uint16_t);
+  endian::write_le<uint16_t, aligned>(fout, dh.AddressOfRelocationTable);
+  fout += sizeof(uint16_t);
+  endian::write_le<uint16_t, aligned>(fout, dh.OverlayNumber);
+  fout += sizeof(uint16_t);
+  for (int i = 0; i < 4; ++i) {
+    endian::write_le<uint16_t, aligned>(fout, dh.Reserved[i]);
+    fout += sizeof(uint16_t);
+  }
+  endian::write_le<uint16_t, aligned>(fout, dh.OEMid);
+  fout += sizeof(uint16_t);
+  endian::write_le<uint16_t, aligned>(fout, dh.OEMinfo);
+  fout += sizeof(uint16_t);
+  for (int i = 0; i < 10; ++i) {
+    endian::write_le<uint16_t, aligned>(fout, dh.Reserved2[i]);
+    fout += sizeof(uint16_t);
+  }
+  endian::write_le<uint32_t, aligned>(fout, dh.AddressOfNewExeHeader);
+  fout += sizeof(uint32_t);
+
+  // PE header.
+  COFF::PEHeader ph;
+  std::memset(&ph, 0, sizeof(ph));
+  ph.Magic = 0x00004550;
+  ph.COFFHeader.Machine = COFF::IMAGE_FILE_MACHINE_I386;
+  ph.COFFHeader.NumberOfSections = 3;
+  ph.COFFHeader.SizeOfOptionalHeader = (sizeof(COFF::PEHeader)
+                                        - sizeof(COFF::header)
+                                        - 4)
+                                       + sizeof(COFF::DataDirectory) * 16;
+  ph.COFFHeader.Characteristics |= COFF::IMAGE_FILE_EXECUTABLE_IMAGE
+                                   | COFF::IMAGE_FILE_32BIT_MACHINE;
+  ph.SizeOfCode                  = 512;
+  ph.SizeOfInitializedData       = 512;
+  ph.SizeOfUninitializedData     = 0;
+  ph.AddressOfEntryPoint         = StartCode;
+  ph.BaseOfCode                  = StartCode;
+  ph.BaseOfData                  = StartData;
+  ph.ImageBase                   = 0x400000;
+  ph.SectionAlignment            = 4096;
+  ph.FileAlignment               = 512;
+  ph.MajorOperatingSystemVersion = 5;
+  ph.MinorOperatingSystemVersion = 1;
+  ph.MajorSubsystemVersion       = 5;
+  ph.MinorSubsystemVersion       = 1;
+  ph.SizeOfImage                 = 20480;
+  ph.SizeOfHeaders               = 1024;
+  ph.Subsystem                   = COFF::IMAGE_SUBSYSTEM_WINDOWS_CUI;
+  ph.SizeOfStackReserve          = 0x10000;
+  ph.SizeOfStackCommit           = 4096;
+  ph.SizeOfHeapReserve           = 0x10000;
+  ph.SizeOfHeapCommit            = 4096;
+  ph.NumberOfRvaAndSize          = 16;
+
+  endian::write_le<uint32_t, aligned>(fout, ph.Magic);
+  fout += sizeof(uint32_t);
+  endian::write_le<uint16_t, aligned>(fout, ph.COFFHeader.Machine);
+  fout += sizeof(uint16_t);
+  endian::write_le<uint16_t, aligned>(fout, ph.COFFHeader.NumberOfSections);
+  fout += sizeof(uint16_t);
+  endian::write_le<uint32_t, aligned>(fout, ph.COFFHeader.TimeDateStamp);
+  fout += sizeof(uint32_t);
+  endian::write_le<uint32_t, aligned>(fout, ph.COFFHeader.PointerToSymbolTable);
+  fout += sizeof(uint32_t);
+  endian::write_le<uint32_t, aligned>(fout, ph.COFFHeader.NumberOfSymbols);
+  fout += sizeof(uint32_t);
+  endian::write_le<uint16_t, aligned>(fout, ph.COFFHeader.SizeOfOptionalHeader);
+  fout += sizeof(uint16_t);
+  endian::write_le<uint16_t, aligned>(fout, ph.COFFHeader.Characteristics);
+  fout += sizeof(uint16_t);
+  endian::write_le<uint8_t, aligned>(fout, ph.MajorLinkerVersion);
+  fout += sizeof(uint8_t);
+  endian::write_le<uint8_t, aligned>(fout, ph.MinorLinkerVersion);
+  fout += sizeof(uint8_t);
+  endian::write_le<uint32_t, aligned>(fout, ph.SizeOfCode);
+  fout += sizeof(uint32_t);
+  endian::write_le<uint32_t, aligned>(fout, ph.SizeOfInitializedData);
+  fout += sizeof(uint32_t);
+  endian::write_le<uint32_t, aligned>(fout, ph.SizeOfUninitializedData);
+  fout += sizeof(uint32_t);
+  endian::write_le<uint32_t, aligned>(fout, ph.AddressOfEntryPoint);
+  fout += sizeof(uint32_t);
+  endian::write_le<uint32_t, aligned>(fout, ph.BaseOfCode);
+  fout += sizeof(uint32_t);
+  endian::write_le<uint32_t, aligned>(fout, ph.BaseOfData);
+  fout += sizeof(uint32_t);
+  endian::write_le<uint32_t, aligned>(fout, ph.ImageBase);
+  fout += sizeof(uint32_t);
+  endian::write_le<uint32_t, aligned>(fout, ph.SectionAlignment);
+  fout += sizeof(uint32_t);
+  endian::write_le<uint32_t, aligned>(fout, ph.FileAlignment);
+  fout += sizeof(uint32_t);
+  endian::write_le<uint16_t, aligned>(fout, ph.MajorOperatingSystemVersion);
+  fout += sizeof(uint16_t);
+  endian::write_le<uint16_t, aligned>(fout, ph.MinorOperatingSystemVersion);
+  fout += sizeof(uint16_t);
+  endian::write_le<uint16_t, aligned>(fout, ph.MajorImageVersion);
+  fout += sizeof(uint16_t);
+  endian::write_le<uint16_t, aligned>(fout, ph.MinorImageVersion);
+  fout += sizeof(uint16_t);
+  endian::write_le<uint16_t, aligned>(fout, ph.MajorSubsystemVersion);
+  fout += sizeof(uint16_t);
+  endian::write_le<uint16_t, aligned>(fout, ph.MinorSubsystemVersion);
+  fout += sizeof(uint16_t);
+  endian::write_le<uint32_t, aligned>(fout, ph.Win32VersionValue);
+  fout += sizeof(uint32_t);
+  endian::write_le<uint32_t, aligned>(fout, ph.SizeOfImage);
+  fout += sizeof(uint32_t);
+  endian::write_le<uint32_t, aligned>(fout, ph.SizeOfHeaders);
+  fout += sizeof(uint32_t);
+  endian::write_le<uint32_t, aligned>(fout, ph.CheckSum);
+  fout += sizeof(uint32_t);
+  endian::write_le<uint16_t, aligned>(fout, ph.Subsystem);
+  fout += sizeof(uint32_t);
+  endian::write_le<uint32_t, aligned>(fout, ph.DLLCharacteristics);
+  fout += sizeof(uint32_t);
+  endian::write_le<uint32_t, aligned>(fout, ph.SizeOfStackReserve);
+  fout += sizeof(uint32_t);
+  endian::write_le<uint32_t, aligned>(fout, ph.SizeOfStackCommit);
+  fout += sizeof(uint32_t);
+  endian::write_le<uint32_t, aligned>(fout, ph.SizeOfHeapReserve);
+  fout += sizeof(uint32_t);
+  endian::write_le<uint32_t, aligned>(fout, ph.SizeOfHeapCommit);
+  fout += sizeof(uint32_t);
+  endian::write_le<uint32_t, aligned>(fout, ph.LoaderFlags);
+  fout += sizeof(uint32_t);
+  endian::write_le<uint32_t, aligned>(fout, ph.NumberOfRvaAndSize);
+  fout += sizeof(uint32_t);
+
+  std::vector<COFF::DataDirectory> dirs(16);
+  std::memset(&dirs.front(), 0, dirs.size() * sizeof(COFF::DataDirectory));
+  dirs[1]  = did->getIDT();
+  dirs[12] = did->getIAT();
+  for (int i = 0; i < 16; ++i) {
+    endian::write_le<uint32_t, aligned>(fout, dirs[i].RelativeVirtualAddress);
+    fout += sizeof(uint32_t);
+    endian::write_le<uint32_t, aligned>(fout, dirs[i].Size);
+    fout += sizeof(uint32_t);
+  }
+
+  std::vector<COFF::section> secs(3);
+  std::memcpy(secs[0].Name, ".text\0\0", 8);
+  secs[0].VirtualSize      = 4096;
+  secs[0].VirtualAddress   = StartCode;
+  secs[0].SizeOfRawData    = 512;
+  secs[0].PointerToRawData = 0x400;
 
   return 0;
 }
