@@ -174,6 +174,7 @@ error_code Module::mergeObject(ObjectFile *o) {
           if (atom != SymbolAtoms.end()) {
             Link l;
             l.Type = Link::LT_Relocation;
+            if (error_code ec = rel_cur->getAddress(l.RelocInfo)) return ec;
             l.Operands.push_back(atom->second);
             a->Links.push_back(l);
           }
