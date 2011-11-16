@@ -53,6 +53,9 @@ static cl::opt<bool>
 static cl::opt<bool>
   PrintSymtab("symtab");
 
+static cl::opt<bool>
+  PrintLayout("layout");
+
 static StringRef ToolName;
 
 static bool error(error_code ec) {
@@ -739,6 +742,16 @@ int main(int argc, char **argv) {
       uint64_t end = (*gi)->RVA + (*gi)->Contents.size();
       if (*current < end)
         *current = end;
+    }
+  }
+
+  for (Module::atom_iterator i = output->atom_begin(),
+                             e = output->atom_end(); i != e; ++i) {
+     if (PrintLayout) {
+      outs() << "Name: " << i->_Name.str()
+              << " RVA: " << i->RVA
+              << " Size: " << i->Contents.size()
+              << "\n";
     }
   }
 
