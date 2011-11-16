@@ -49,6 +49,11 @@ public:
   bool operator==(const Name& other) const {
     return data.data() == other.data.data();
   }
+
+  bool operator!=(const Name& other) const {
+    return !(*this == other);
+  }
+
   bool operator <(const Name& other) const {
     return data.data() < other.data.data();
   }

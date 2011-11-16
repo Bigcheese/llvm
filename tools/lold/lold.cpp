@@ -56,6 +56,9 @@ static cl::opt<bool>
 static cl::opt<bool>
   PrintLayout("layout");
 
+static cl::opt<std::string>
+  EntryPoint("entry", cl::init("_mainCRTStartup"));
+
 static StringRef ToolName;
 
 static bool error(error_code ec) {
@@ -429,6 +432,18 @@ int main(int argc, char **argv) {
     ProcessInput(InputFilenames[i], i, C);
   }
 
+  // Add ___ImageBase symbol.
+  // Create empty module for output.
+  OwningPtr<Module> output(new Module(C));
+  AtomRef ar;
+  ar.Name = C.getName("___ImageBase");
+  ar.Priority = 0;
+  ar.Instance = output->getOrCreateAtom<Atom>(ar.Name);
+  ar.Instance->Defined = true;
+  ar.Instance->External = true;
+  ar.Instance->RVA = 0;
+  Symbtab.push_back(ar);
+
   // Sort symbol table by name and then priority.
   std::sort(Symbtab.begin(), Symbtab.end());
 
@@ -446,6 +461,7 @@ int main(int argc, char **argv) {
       }
       outs() << "\n";
     }
+    outs().flush();
   }
 
   std::vector<Atom*> UndefinedExternals;
@@ -455,12 +471,9 @@ int main(int argc, char **argv) {
   typedef std::map<Name, Module*> ImportMap_t;
   ImportMap_t ImportMap;
 
-  // Create empty module for output.
-  OwningPtr<Module> output(new Module(C));
   Modules.push_back(output.get());
   // Add starting atom.
-  // Atom *start = output->getOrCreateAtom<Atom>(C.getName("_mainCRTStartup"));
-  Atom *start = output->getOrCreateAtom<Atom>(C.getName("_main"));
+  Atom *start = output->getOrCreateAtom<Atom>(C.getName(EntryPoint));
   start->External = true;
   UndefinedExternals.push_back(start);
 
@@ -472,9 +485,9 @@ int main(int argc, char **argv) {
                                             , Symbtab.end()
                                             , a->_Name
                                             , FindAtomRefString());
-    if (i == Symbtab.end()) {
-      // errs() << "Ohnoes, couldn't find symbol! " << a->_Name.str() << "\n";
-      continue;
+    if (i == Symbtab.end() || i->Name != a->_Name) {
+      errs() << "Ohnoes, couldn't find symbol! " << a->_Name.str() << "\n";
+      return 0;
     }
 
     errs() << i->Name.str() << " -> [" << i->Priority << "]\n";
@@ -556,8 +569,10 @@ int main(int argc, char **argv) {
           //        UndefinedExternals.
           for (Module::atom_iterator ai = m->atom_begin(),
                                      ae = m->atom_end(); ai != ae; ++ai) {
-            if (ai->External && !ai->Defined)
+            if (ai->External && !ai->Defined) {
               UndefinedExternals.push_back(ai);
+              errs() << "Module: " << m->ObjName.str() << " undef -> " << ai->_Name.str() << "\n";
+            }
           }
         }
       } else
@@ -679,13 +694,15 @@ int main(int argc, char **argv) {
                            + sizeof(COFF::PEHeader)
                            + (sizeof(COFF::DataDirectory) * 16);
   // For now we arbitrarily have 3 sections.
-  uint32_t EndSections = StartSections + sizeof(COFF::section) * 3;
-  uint32_t StartCode   = 0x1000;
-  uint32_t CurrentCode = StartCode;
-  uint32_t StartData   = 0x2000;
-  uint32_t CurrentData = StartData;
-  uint32_t StartIData  = 0x3000;
-  uint32_t EndFile     = 0x4000;
+  uint32_t EndSections              = StartSections + sizeof(COFF::section) * 3;
+  uint32_t StartCode                = 0x1000;
+  uint32_t CurrentCode              = StartCode;
+  uint32_t StartData                = 0x2000;
+  uint32_t CurrentData              = StartData;
+  uint32_t StartIData               = 0x3000;
+  uint32_t StartUninitializedData   = 0x4000;
+  uint32_t CurrentUninitializedData = StartUninitializedData;
+  uint32_t EndFile                  = 0x5000;
 
   // Build IAT.
   DLLImportData *did = output->createAtom<DLLImportData>(C.getName(".idata"));
@@ -723,6 +740,9 @@ int main(int argc, char **argv) {
       break;
     case Atom::AT_Data:
       current = &CurrentData;
+      break;
+    case Atom::AT_UninitializedData:
+      current = &CurrentUninitializedData;
       break;
     default:
       continue;
@@ -810,7 +830,7 @@ int main(int argc, char **argv) {
   std::memset(&ph, 0, sizeof(ph));
   ph.Signature = 0x00004550;
   ph.COFFHeader.Machine = COFF::IMAGE_FILE_MACHINE_I386;
-  ph.COFFHeader.NumberOfSections = 3;
+  ph.COFFHeader.NumberOfSections = 4;
   ph.COFFHeader.SizeOfOptionalHeader = (sizeof(COFF::PEHeader)
                                         - sizeof(COFF::header)
                                         - 4)
@@ -823,7 +843,7 @@ int main(int argc, char **argv) {
   ph.MajorLinkerVersion          = 8;
   ph.SizeOfCode                  = 4096;
   ph.SizeOfInitializedData       = 8192;
-  ph.SizeOfUninitializedData     = 0;
+  ph.SizeOfUninitializedData     = 4096;
   ph.AddressOfEntryPoint         = start->RVA;
   ph.BaseOfCode                  = StartCode;
   ph.BaseOfData                  = StartData;
@@ -931,7 +951,7 @@ int main(int argc, char **argv) {
     fout += sizeof(uint32_t);
   }
 
-  std::vector<COFF::section> secs(3);
+  std::vector<COFF::section> secs(4);
   std::memcpy(secs[0].Name, ".text\0\0", 8);
   secs[0].VirtualSize      = 4096;
   secs[0].VirtualAddress   = StartCode;
@@ -958,7 +978,16 @@ int main(int argc, char **argv) {
   secs[2].Characteristics |= COFF::IMAGE_SCN_CNT_INITIALIZED_DATA
                              | COFF::IMAGE_SCN_MEM_READ;
 
-  for (int i = 0; i < 3; ++i) {
+  std::memcpy(secs[3].Name, ".bss\0\0\0", 8);
+  secs[3].VirtualSize      = 4096;
+  secs[3].VirtualAddress   = StartUninitializedData;
+  secs[3].SizeOfRawData    = 512;
+  secs[3].PointerToRawData = StartUninitializedData;
+  secs[3].Characteristics |= COFF::IMAGE_SCN_CNT_UNINITIALIZED_DATA
+                             | COFF::IMAGE_SCN_MEM_WRITE
+                             | COFF::IMAGE_SCN_MEM_READ;
+
+  for (int i = 0; i < 4; ++i) {
     std::memcpy(fout, secs[i].Name, 8);
     fout += 8;
     endian::write_le<uint32_t, unaligned>(fout, secs[i].VirtualSize);
@@ -1008,7 +1037,7 @@ int main(int argc, char **argv) {
               &out.front() + rva, li->Operands[0]->RVA - (rva + 4));
             break;
           default:
-            llvm_unreachable("Unknown relocation type!");
+            errs() << "Unknown relocation! " << li->RelocType << "\n";
           }
         }
       }

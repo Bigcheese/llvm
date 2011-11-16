@@ -77,12 +77,16 @@ static error_code buildSectionSymbolAndAtomMap(Module &m,
     if (sec != o->end_sections()) {
       bool code;
       bool data;
+      bool bss;
       sec->isText(code);
       sec->isData(data);
+      sec->isBSS(bss);
       if (code)
         a->Type = Atom::AT_Code;
       else if (data)
         a->Type = Atom::AT_Data;
+      else if (bss)
+        a->Type = Atom::AT_UninitializedData;
     }
   }
   return object_error::success;

@@ -62,6 +62,7 @@ public:
     AT_Unknown,
     AT_Code,
     AT_Data,
+    AT_UninitializedData,
     AT_Import
   } Type;
   unsigned Defined  : 1;
