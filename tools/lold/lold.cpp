@@ -12,6 +12,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "llvm/ADT/DenseMap.h"
+#include "llvm/ADT/StringExtras.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Object/Archive.h"
 #include "llvm/Object/Context.h"
@@ -22,12 +23,14 @@
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/Endian.h"
 #include "llvm/Support/FileSystem.h"
+#include "llvm/Support/Format.h"
 #include "llvm/Support/ManagedStatic.h"
 #include "llvm/Support/MemoryBuffer.h"
 #include "llvm/Support/PrettyStackTrace.h"
 #include "llvm/Support/raw_ostream.h"
 #include "llvm/Support/Signals.h"
 #include <algorithm>
+#include <cstring>
 #include <map>
 #include <string>
 #include <sstream>
@@ -565,6 +568,9 @@ int main(int argc, char **argv) {
     a->Links.push_back(l);
   }
 
+  // Set start to what it resolved to.
+  start = start->Links[0].Operands[0];
+
   outs().flush();
   errs().flush();
   if (PrintDOT) {
@@ -719,13 +725,20 @@ int main(int argc, char **argv) {
       continue;
     }
 
+    // Align current to 16 bytes.
+    if (*current & 0xF)
+      *current += 0x10 - (*current & 0xF);
+
     (*i)->RVA = *current;
+    *current += (*i)->Contents.size();
     // Setup group.
     for (std::vector<Atom*>::iterator gi = Groups[*i].begin(),
                                       ge = Groups[*i].end(); gi != ge; ++gi) {
       uint64_t dist = getDistanceToRoot(*gi);
       (*gi)->RVA = dist + (*i)->RVA;
-      *current += dist;
+      uint64_t end = (*gi)->RVA + (*gi)->Contents.size();
+      if (*current < end)
+        *current = end;
     }
   }
 
@@ -798,7 +811,7 @@ int main(int argc, char **argv) {
   ph.SizeOfCode                  = 4096;
   ph.SizeOfInitializedData       = 8192;
   ph.SizeOfUninitializedData     = 0;
-  ph.AddressOfEntryPoint         = StartCode;
+  ph.AddressOfEntryPoint         = start->RVA;
   ph.BaseOfCode                  = StartCode;
   ph.BaseOfData                  = StartData;
   ph.ImageBase                   = 0x400000;
@@ -960,24 +973,38 @@ int main(int argc, char **argv) {
   for (Module::atom_iterator i = output->atom_begin(),
                              e = output->atom_end(); i != e; ++i) {
     if (i->Type == Atom::AT_Code || i->Type == Atom::AT_Data) {
-      std::memcpy(&out.front() + i->RVA, i->Contents.data(), i->Contents.size());
-    }
+      std::memcpy(&out.front() + i->RVA, i->Contents.data(),
+                  i->Contents.size());
 
-    // Apply relocations.
-    for (Atom::LinkList_t::iterator li = i->Links.begin(),
-                                    le = i->Links.end(); li != le; ++li) {
-      if (li->Type == Link::LT_Relocation) {
-        // We assume they are all DIR32 for now.
-        endian::write_le<uint32_t, unaligned>(
-            &out.front() + i->RVA + li->RelocInfo
-          , ph.ImageBase + li->Operands[0]->RVA);
+      // Apply relocations.
+      for (Atom::LinkList_t::iterator li = i->Links.begin(),
+                                      le = i->Links.end(); li != le; ++li) {
+        if (li->Type == Link::LT_Relocation) {
+          uint64_t rva = i->RVA + li->RelocAddr;
+          switch (li->RelocType) {
+          case COFF::IMAGE_REL_I386_DIR32:
+            endian::write_le<uint32_t, unaligned>(
+              &out.front() + rva, ph.ImageBase + li->Operands[0]->RVA);
+            break;
+          case COFF::IMAGE_REL_I386_DIR32NB:
+            endian::write_le<uint32_t, unaligned>(
+              &out.front() + rva, li->Operands[0]->RVA);
+            break;
+          case COFF::IMAGE_REL_I386_REL32:
+            endian::write_le<int32_t, unaligned>(
+              &out.front() + rva, li->Operands[0]->RVA - (rva + 4));
+            break;
+          default:
+            llvm_unreachable("Unknown relocation type!");
+          }
+        }
       }
     }
   }
 
   // Write it all out.
   std::string msg;
-  raw_fd_ostream outfs("a.exe", msg);
+  raw_fd_ostream outfs("a.exe", msg, raw_fd_ostream::F_Binary);
   outfs.write(&out.front(), out.size());
   outfs.flush();
 

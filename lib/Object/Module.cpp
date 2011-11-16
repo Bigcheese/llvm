@@ -145,9 +145,6 @@ error_code Module::mergeObject(ObjectFile *o) {
           End = SectSize;
         else {
           Symbols[si + 1].getOffset(End);
-          // Make sure this symbol takes up space.
-          if (End != Start)
-            --End;
         }
         Atom *prev = a;
         a = SymbolAtoms[Symbols[si]];
@@ -174,7 +171,10 @@ error_code Module::mergeObject(ObjectFile *o) {
           if (atom != SymbolAtoms.end()) {
             Link l;
             l.Type = Link::LT_Relocation;
-            if (error_code ec = rel_cur->getAddress(l.RelocInfo)) return ec;
+            if (error_code ec = rel_cur->getAddress(l.RelocAddr)) return ec;
+            // Adjust for atom relative.
+            l.RelocAddr -= Start;
+            if (error_code ec = rel_cur->getType(l.RelocType)) return ec;
             l.Operands.push_back(atom->second);
             a->Links.push_back(l);
           }

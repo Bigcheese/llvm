@@ -37,10 +37,9 @@ public:
     LT_ResolvedTo
   } Type;
 
-  union {
-    uint32_t ConstraintDistance;
-    uint64_t RelocInfo;
-  };
+  uint32_t ConstraintDistance;
+  uint64_t RelocAddr;
+  uint64_t RelocType;
 };
 
 class Atom : public ilist_node<Atom> {
