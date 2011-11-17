@@ -17,7 +17,8 @@ Atom::Atom()
   : Type(AT_Unknown)
   , Defined(false)
   , External(false)
-  , RVA(0) {
+  , RVA(0)
+  , CommonSize(0) {
 }
 
 Atom::~Atom() {

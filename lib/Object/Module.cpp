@@ -68,8 +68,13 @@ static error_code buildSectionSymbolAndAtomMap(Module &m,
         a = atom[*i] = m.createAtom<Atom>(m.getContext().getName(name));
       } else
         a = atom[*i] = m.getOrCreateAtom<Atom>(m.getContext().getName(name));
-      if (symb->StorageClass == COFF::IMAGE_SYM_CLASS_EXTERNAL)
+      if (symb->StorageClass == COFF::IMAGE_SYM_CLASS_EXTERNAL) {
         a->External = true;
+      }
+      if (symb->SectionNumber == COFF::IMAGE_SYM_UNDEFINED && symb->Value != 0){
+        a->Type = Atom::AT_Common;
+        a->CommonSize = symb->Value;
+      }
     } else
       a = atom[*i] = m.getOrCreateAtom<Atom>(m.getContext().getName(name));
     if (sec != o->end_sections())

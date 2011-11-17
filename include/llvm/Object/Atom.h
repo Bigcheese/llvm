@@ -59,8 +59,9 @@ public:
   typedef std::vector<Link> LinkList_t;
 
   enum {
-    AT_Unknown,
+    AT_Unknown = 0,
     AT_Code,
+    AT_Common,
     AT_Data,
     AT_UninitializedData,
     AT_Import
@@ -72,6 +73,7 @@ public:
   Name ImportFrom;
   LinkList_t Links;
   uint64_t RVA;
+  uint32_t CommonSize;
 };
 
 }

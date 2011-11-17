@@ -569,7 +569,7 @@ int main(int argc, char **argv) {
           //        UndefinedExternals.
           for (Module::atom_iterator ai = m->atom_begin(),
                                      ae = m->atom_end(); ai != ae; ++ai) {
-            if (ai->External && !ai->Defined) {
+            if (ai->External && !ai->Defined && ai->Type != Atom::AT_Common) {
               UndefinedExternals.push_back(ai);
               errs() << "Module: " << m->ObjName.str() << " undef -> " << ai->_Name.str() << "\n";
             }
