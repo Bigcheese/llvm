@@ -58,22 +58,51 @@ protected:
 public:
   typedef std::vector<Link> LinkList_t;
 
-  enum {
-    AT_Unknown = 0,
-    AT_Code,
-    AT_Common,
-    AT_Data,
-    AT_UninitializedData,
-    AT_Import
-  } Type;
-  unsigned Defined  : 1;
-  unsigned External : 1;
-  StringRef Contents;
-  Name _Name;
-  Name ImportFrom;
-  LinkList_t Links;
-  uint64_t RVA;
-  uint32_t CommonSize;
+  /// @brief An enumeration for the kinds of linkage for atoms.
+  enum LinkageTypes {
+    ExternalLinkage = 0,///< Externally visible
+    LinkOnceAnyLinkage, ///< Keep one copy of function when linking (inline)
+    LinkOnceODRLinkage, ///< Same, but only replaced by something equivalent.
+    WeakAnyLinkage,     ///< Keep one copy of named function when linking (weak)
+    WeakODRLinkage,     ///< Same, but only replaced by something equivalent.
+    AppendingLinkage,   ///< Special purpose, only applies to global arrays
+    InternalLinkage,    ///< Rename collisions when linking (static functions).
+    PrivateLinkage,     ///< Like Internal, but omit from symbol table.
+    DLLImportLinkage,   ///< Function to be imported from DLL
+    DLLExportLinkage,   ///< Function to be accessible from DLL.
+    ExternalWeakLinkage,///< ExternalWeak linkage description.
+    CommonLinkage       ///< Tentative definitions.
+  };
+
+  /// @brief An enumeration for the kinds of visibility of atoms.
+  enum VisibilityTypes {
+    DefaultVisibility = 0,
+    HiddenVisibility,
+    ProtectedVisibility
+  };
+
+  Name Name;
+  unsigned int Linkage    : 4;
+  unsigned int Visibility : 2;
+};
+
+class PhysicalAtom : public Atom {
+private:
+  virtual ~PhysicalAtom();
+
+  unsigned int Alignment : 7; ///< log2 of atom alignment.
+  uint64_t VirtualAddress;
+  uint64_t RelativeVirtualAddress;
+  uint64_t VirtualSize;
+  uint64_t OutputFileAddress;
+  Name OutputSegment;
+
+public:
+
+  virtual StringRef getContents();
+  virtual uint64_t  getVirtualSize();
+
+
 };
 
 }
