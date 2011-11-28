@@ -58,41 +58,23 @@ static error_code buildSectionSymbolAndAtomMap(Module &m,
     section_iterator sec = o->end_sections();
     if (error_code ec = i->getName(name)) return ec;
     if (error_code ec = i->getSection(sec)) return ec;
-    Atom *a;
     if (const COFFObjectFile *coff = dyn_cast<const COFFObjectFile>(o)) {
       const coff_symbol *symb = coff->toSymb(i->getRawDataRefImpl());
-      // Section symbol.
-      if (symb->StorageClass == COFF::IMAGE_SYM_CLASS_STATIC
-          && symb->Value == 0) {
-        // Create a unique name.
-        a = atom[*i] = m.createAtom<Atom>(m.getContext().getName(name));
-      } else
-        a = atom[*i] = m.getOrCreateAtom<Atom>(m.getContext().getName(name));
-      if (symb->StorageClass == COFF::IMAGE_SYM_CLASS_EXTERNAL) {
-        a->External = true;
-      }
-      if (symb->SectionNumber == COFF::IMAGE_SYM_UNDEFINED && symb->Value != 0){
-        a->Type = Atom::AT_Common;
-        a->CommonSize = symb->Value;
-      }
+      bool defined = symb->SectionNumber > COFF::IMAGE_SYM_UNDEFINED;
+      bool external = symb->StorageClass == COFF::IMAGE_SYM_CLASS_EXTERNAL;
+      Name n = m.getContext().getName(name);
+      if (defined && external)
+        atom[*i] = m.getOrCreateAtom<PhysicalAtom>(n);
+      else if (defined)
+        atom[*i] = m.createAtom<PhysicalAtom>(n);
+      else if (external)
+        atom[*i] = m.getOrCreateAtom<Atom>(n);
+      else
+        atom[*i] = m.createAtom<Atom>(n);
     } else
-      a = atom[*i] = m.getOrCreateAtom<Atom>(m.getContext().getName(name));
+      atom[*i] = m.getOrCreateAtom<Atom>(m.getContext().getName(name));
     if (sec != o->end_sections())
       symb[*sec].push_back(*i);
-    if (sec != o->end_sections()) {
-      bool code;
-      bool data;
-      bool bss;
-      sec->isText(code);
-      sec->isData(data);
-      sec->isBSS(bss);
-      if (code)
-        a->Type = Atom::AT_Code;
-      else if (data)
-        a->Type = Atom::AT_Data;
-      else if (bss)
-        a->Type = Atom::AT_UninitializedData;
-    }
   }
   return object_error::success;
 }

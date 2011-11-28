@@ -14,12 +14,20 @@ using namespace llvm;
 using namespace object;
 
 Atom::Atom()
-  : Type(AT_Unknown)
-  , Defined(false)
-  , External(false)
-  , RVA(0)
-  , CommonSize(0) {
+  : Linkage(UnknownLinkage)
+  , Visibility(UnknownVisibility) {
 }
 
 Atom::~Atom() {
+}
+
+PhysicalAtom::PhysicalAtom()
+  : VirtualSize(0)
+  , Alignment(0)
+  , VirtualAddress(~uint64_t(0))
+  , RelativeVirtualAddress(~uint64_t(0))
+  , OutputFileAddress(~uint64_t(0)) {
+}
+
+PhysicalAtom::~PhysicalAtom() {
 }
