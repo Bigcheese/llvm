@@ -215,7 +215,24 @@ struct coff_import_header {
   support::ulittle16_t TypeInfo;
 };
 
-class DLLImportData : public Atom {
+class DLLImport : public Atom {
+protected:
+  friend class Module;
+
+  DLLImport()
+    : Atom(AK_DLLImportAtom) {}
+
+public:
+  Name ImportFrom;
+  uint32_t ImportTableIndex;
+
+  static inline bool classof(const Atom *v) {
+    return v->getType() == AK_DLLImportAtom;
+  }
+  static inline bool classof(const DLLImport *v) { return true; }
+};
+
+class DLLImportData : public PhysicalAtom {
   typedef std::vector<COFF::ImportDirectoryTableEntry> IDT_t;
   typedef std::vector<COFF::ImportLookupTableEntry32> ILT_t;
   typedef std::vector<std::pair<uint16_t, Name> > HintNameTable_t;
@@ -238,26 +255,25 @@ class DLLImportData : public Atom {
 
 protected:
   DLLImportData()
-    : currentoffset(0) {}
+    : PhysicalAtom(AK_DLLImportDataAtom)
+    , currentoffset(0) {}
 
 public:
   COFF::DataDirectory getIAT() const {
     COFF::DataDirectory dd;
-    dd.RelativeVirtualAddress = RVA + IATStart;
+    dd.RelativeVirtualAddress = getRelativeVirtualAddress() + IATStart;
     dd.Size = IDTStart - IATStart;
     return dd;
   }
 
   COFF::DataDirectory getIDT() const {
     COFF::DataDirectory dd;
-    dd.RelativeVirtualAddress = RVA + IDTStart;
+    dd.RelativeVirtualAddress = getRelativeVirtualAddress() + IDTStart;
     dd.Size = ILTStart - IDTStart;
     return dd;
   }
 
-  uint32_t addImport(Atom *a) {
-    assert(a->Type == Atom::AT_Import && "a must be an AT_Import!");
-
+  uint32_t addImport(DLLImport *a) {
     // Only support one imported library for now.
     if (IDT.empty()) {
       COFF::ImportDirectoryTableEntry IDTe;
@@ -272,11 +288,11 @@ public:
 
     COFF::ImportLookupTableEntry32 ILTe;
     ILTe.setHintNameRVA(currentoffset);
-    std::size_t len = a->_Name.str().size() + 1;
+    std::size_t len = a->Identifier.str().size() + 1;
     if (len & 1)
         ++len;
     currentoffset += 2 + len;
-    HintNameTable.push_back(std::make_pair(0, a->_Name));
+    HintNameTable.push_back(std::make_pair(0, a->Identifier));
     ILT.push_back(ILTe);
 
     return (ILT.size() - 1) * 4;
@@ -382,18 +398,24 @@ public:
 
     // Set contents.
     Contents = StringRef(&Data.front(), Data.size());
-
-    // Clear out the data we generated from.
-    IDT.clear();
-    ILT.clear();
-    HintNameTable.clear();
-    currentoffset = 0;
-    NameTable.clear();
   }
 
-  void dump() {
-
+  virtual void updateContents() {
+    finalize(getRelativeVirtualAddress());
   }
+
+  virtual void updatePhysicalSize() {
+    Contents = StringRef(Contents.data(), layout());
+  }
+
+  virtual void updateVirtualSize() {
+    VirtualSize = layout();
+  }
+
+  static inline bool classof(const Atom *v) {
+    return v->getType() == AK_DLLImportDataAtom;
+  }
+  static inline bool classof(const DLLImportData *v) { return true; }
 };
 
 Atom *getRoot(Atom *a) {
@@ -432,17 +454,21 @@ int main(int argc, char **argv) {
     ProcessInput(InputFilenames[i], i, C);
   }
 
-  // Add ___ImageBase symbol.
   // Create empty module for output.
   OwningPtr<Module> output(new Module(C));
-  AtomRef ar;
-  ar.Name = C.getName("___ImageBase");
-  ar.Priority = 0;
-  ar.Instance = output->getOrCreateAtom<Atom>(ar.Name);
-  ar.Instance->Defined = true;
-  ar.Instance->External = true;
-  ar.Instance->RVA = 0;
-  Symbtab.push_back(ar);
+  {
+    // Add ___ImageBase symbol.
+    AtomRef ar;
+    PhysicalAtom *a;
+    ar.Name       = C.getName("___ImageBase");
+    ar.Priority   = 0;
+    ar.Instance   = a = output->getOrCreateAtom<PhysicalAtom>(ar.Name);
+    a->Scope      = Atom::ScopeTranslationUnit;
+    a->Definition = Atom::DefinitionAbsolute;
+    a->Inclusion  = Atom::SymbolTableNotIn;
+    a->setRelativeVirtualAddress(0);
+    Symbtab.push_back(ar);
+  }
 
   // Sort symbol table by name and then priority.
   std::sort(Symbtab.begin(), Symbtab.end());
@@ -473,8 +499,9 @@ int main(int argc, char **argv) {
 
   Modules.push_back(output.get());
   // Add starting atom.
-  Atom *start = output->getOrCreateAtom<Atom>(C.getName(EntryPoint));
-  start->External = true;
+  Atom *start       = output->getOrCreateAtom<Atom>(C.getName(EntryPoint));
+  start->Scope      = Atom::ScopeGlobal;
+  start->Definition = Atom::DefinitionRegular;
   UndefinedExternals.push_back(start);
 
   while (!UndefinedExternals.empty()) {
@@ -483,10 +510,10 @@ int main(int argc, char **argv) {
     // Find this symbol.
     Symbtab_t::iterator i = std::lower_bound( Symbtab.begin()
                                             , Symbtab.end()
-                                            , a->_Name
+                                            , a->Identifier
                                             , FindAtomRefString());
-    if (i == Symbtab.end() || i->Name != a->_Name) {
-      errs() << "Ohnoes, couldn't find symbol! " << a->_Name.str() << "\n";
+    if (i == Symbtab.end() || i->Name != a->Identifier) {
+      errs() << "Ohnoes, couldn't find symbol! " << a->Identifier.str() << "\n";
       return 0;
     }
 
@@ -532,12 +559,12 @@ int main(int argc, char **argv) {
               StringRef SymbolName(symname);
               SymbolName = SymbolName.substr(1);
               SymbolName = SymbolName.substr(0, SymbolName.rfind('@'));
-              Atom *a = m->getOrCreateAtom<Atom>(C.getName(SymbolName));
-              a->External = true;
-              a->Defined = true;
-              a->Type = Atom::AT_Import;
+              DLLImport *a =
+                m->getOrCreateAtom<DLLImport>(C.getName(SymbolName));
+              a->Scope      = Atom::ScopeGlobal;
+              a->Definition = Atom::DefinitionProxy;
               a->ImportFrom = DLLName;
-              i->Instance = a;
+              i->Instance   = a;
               goto dolink;
             } else {
               error(ec);
@@ -569,9 +596,9 @@ int main(int argc, char **argv) {
           //        UndefinedExternals.
           for (Module::atom_iterator ai = m->atom_begin(),
                                      ae = m->atom_end(); ai != ae; ++ai) {
-            if (ai->External && !ai->Defined && ai->Type != Atom::AT_Common) {
+            if (!isa<PhysicalAtom>(ai)) {
               UndefinedExternals.push_back(ai);
-              errs() << "Module: " << m->ObjName.str() << " undef -> " << ai->_Name.str() << "\n";
+              errs() << "Module: " << m->ObjName.str() << " undef -> " << ai->Identifier.str() << "\n";
             }
           }
         }
@@ -597,6 +624,7 @@ int main(int argc, char **argv) {
       Modules[i]->printGraph(outs());
     }
     outs() << "}\n";
+    outs().flush();
   }
 
   if (PrintGEXF) {
@@ -614,25 +642,12 @@ int main(int argc, char **argv) {
       for (Module::atom_iterator ai = Modules[i]->atom_begin(),
                                  ae = Modules[i]->atom_end(); ai != ae; ++ai) {
         outs() << "<node id=\"" << "atom" << ai
-               << "\" label=\"" << xmlencode(ai->_Name.str()) << "\">\n"
+               << "\" label=\"" << xmlencode(ai->Identifier.str()) << "\">\n"
                << "<attvalues>\n"
                << "<attvalue for=\"0\" value=\""
                << Modules[i]->ObjName.str() << "\"/>\n"
-               << "<attvalue for=\"1\" value=\"" << (ai->External ? "true" : "false") << "\"/>\n"
+               << "<attvalue for=\"1\" value=\"" << (ai->Scope == Atom::ScopeGlobal ? "true" : "false") << "\"/>\n"
                << "<attvalue for=\"2\" value=\"";
-        switch (ai->Type) {
-        case Atom::AT_Code:
-          outs() << "code";
-          break;
-        case Atom::AT_Data:
-          outs() << "data";
-          break;
-        case Atom::AT_Import:
-          outs() << "import";
-          break;
-        default:
-          outs() << "unknown";
-        }
         outs() << "\"/>\n"
                << "</attvalues>\n"
                << "</node>\n";
@@ -672,7 +687,7 @@ int main(int argc, char **argv) {
   // Collapse all LT_ResolvedTo's.
   for (Module::atom_iterator i = output->atom_begin(),
                              e = output->atom_end(); i != e;) {
-    if (!i->Defined && i->External) {
+    if (!isa<PhysicalAtom>(i) && i->Scope == Atom::ScopeGlobal) {
       bool erased = false;
       for (Atom::LinkList_t::iterator li = i->Links.begin(),
                                       le = i->Links.end(); li != le; ++li) {
@@ -706,60 +721,68 @@ int main(int argc, char **argv) {
 
   // Build IAT.
   DLLImportData *did = output->createAtom<DLLImportData>(C.getName(".idata"));
-  did->RVA = StartIData;
+  did->setRelativeVirtualAddress(StartIData);
   for (Module::atom_iterator i = output->atom_begin(),
                              e = output->atom_end(); i != e; ++i) {
-    if (i->Type == Atom::AT_Import)
-      i->RVA = did->RVA + did->addImport(i);
+    if (DLLImport *dia = dyn_cast<DLLImport>(i))
+      dia->ImportTableIndex = did->addImport(dia);
   }
-  did->finalize(did->RVA);
+  did->finalize(did->getRelativeVirtualAddress());
 
   // Allocate RVAs.
   // Find roots and groups.
   // FIXME: This doesn't handle multiple LocationOffsetConstraints in one atom
   //        at all :(.
-  std::vector<Atom*> Roots;
-  std::map<Atom*, std::vector<Atom*> > Groups;
+  std::vector<PhysicalAtom*> Roots;
+  std::map<PhysicalAtom*, std::vector<PhysicalAtom*> > Groups;
   for (Module::atom_iterator i = output->atom_begin(),
                              e = output->atom_end(); i != e; ++i) {
-    Atom *a = getRoot(i);
-    if (a == i) {
-      Roots.push_back(a);
-    } else {
-      Groups[a].push_back(i);
+    if (!isa<PhysicalAtom>(i))
+      continue;
+    if (PhysicalAtom *a = dyn_cast<PhysicalAtom>(getRoot(i))) {
+      if (a == i) {
+        Roots.push_back(a);
+      } else {
+        Groups[a].push_back(cast<PhysicalAtom>(i));
+      }
     }
   }
 
   // Now we can layout!
-  for (std::vector<Atom*>::iterator i = Roots.begin(),
+  for (std::vector<PhysicalAtom*>::iterator i = Roots.begin(),
                                     e = Roots.end(); i != e; ++i) {
     uint32_t *current;
-    switch ((*i)->Type) {
-    case Atom::AT_Code:
-      current = &CurrentCode;
-      break;
-    case Atom::AT_Data:
-      current = &CurrentData;
-      break;
-    case Atom::AT_UninitializedData:
-      current = &CurrentUninitializedData;
-      break;
-    default:
+    if (const PhysicalAtom::Section *section = (*i)->getInputSection()) {
+      switch (section->Type) {
+      case PhysicalAtom::Section::Code:
+        current = &CurrentCode;
+        break;
+      case PhysicalAtom::Section::InitializedData:
+        current = &CurrentData;
+        break;
+      case PhysicalAtom::Section::UninitializedData:
+        current = &CurrentUninitializedData;
+        break;
+      default:
+        continue;
+      }
+    } else
       continue;
-    }
 
     // Align current to 16 bytes.
     if (*current & 0xF)
       *current += 0x10 - (*current & 0xF);
 
-    (*i)->RVA = *current;
-    *current += (*i)->Contents.size();
+    (*i)->setRelativeVirtualAddress(*current);
+    *current += (*i)->getPhysicalSize();
     // Setup group.
-    for (std::vector<Atom*>::iterator gi = Groups[*i].begin(),
+    for (std::vector<PhysicalAtom*>::iterator gi = Groups[*i].begin(),
                                       ge = Groups[*i].end(); gi != ge; ++gi) {
       uint64_t dist = getDistanceToRoot(*gi);
-      (*gi)->RVA = dist + (*i)->RVA;
-      uint64_t end = (*gi)->RVA + (*gi)->Contents.size();
+      (*gi)->setRelativeVirtualAddress(dist
+                                       + (*i)->getRelativeVirtualAddress());
+      uint64_t end = (*gi)->getRelativeVirtualAddress()
+                     + (*gi)->getPhysicalSize();
       if (*current < end)
         *current = end;
     }
@@ -768,10 +791,12 @@ int main(int argc, char **argv) {
   for (Module::atom_iterator i = output->atom_begin(),
                              e = output->atom_end(); i != e; ++i) {
      if (PrintLayout) {
-      outs() << "Name: " << i->_Name.str()
-              << " RVA: " << i->RVA
-              << " Size: " << i->Contents.size()
-              << "\n";
+      outs() << "Name: " << i->Identifier.str();
+      if (PhysicalAtom *a = dyn_cast<PhysicalAtom>(i)) {
+        outs() << " RVA: " << a->getRelativeVirtualAddress()
+               << " Size: " << a->getPhysicalSize();
+      }
+      outs() << "\n";
     }
   }
 
@@ -844,7 +869,8 @@ int main(int argc, char **argv) {
   ph.SizeOfCode                  = 4096;
   ph.SizeOfInitializedData       = 8192;
   ph.SizeOfUninitializedData     = 4096;
-  ph.AddressOfEntryPoint         = start->RVA;
+  ph.AddressOfEntryPoint         =
+    cast<PhysicalAtom>(start)->getRelativeVirtualAddress();
   ph.BaseOfCode                  = StartCode;
   ph.BaseOfData                  = StartData;
   ph.ImageBase                   = 0x400000;
@@ -1011,33 +1037,51 @@ int main(int argc, char **argv) {
   }
 
   // Now to copy the data!
-  did->Type = Atom::AT_Data;
+  {
+    PhysicalAtom::Section *section = new PhysicalAtom::Section;
+    section->Identifier = C.getName(".idata");
+    section->Type = PhysicalAtom::Section::InitializedData;
+    did->setInputSection(section);
+  }
   for (Module::atom_iterator i = output->atom_begin(),
                              e = output->atom_end(); i != e; ++i) {
-    if (i->Type == Atom::AT_Code || i->Type == Atom::AT_Data) {
-      std::memcpy(&out.front() + i->RVA, i->Contents.data(),
-                  i->Contents.size());
+    if (PhysicalAtom *a = dyn_cast<PhysicalAtom>(i)) {
+      const PhysicalAtom::Section *section = a->getInputSection();
+      if (section
+          && (section->Type == PhysicalAtom::Section::Code
+            || section->Type == PhysicalAtom::Section::InitializedData)) {
+        std::memcpy( &out.front() + a->getRelativeVirtualAddress()
+                   , a->getContents().data()
+                   , a->getPhysicalSize());
 
-      // Apply relocations.
-      for (Atom::LinkList_t::iterator li = i->Links.begin(),
-                                      le = i->Links.end(); li != le; ++li) {
-        if (li->Type == Link::LT_Relocation) {
-          uint64_t rva = i->RVA + li->RelocAddr;
-          switch (li->RelocType) {
-          case COFF::IMAGE_REL_I386_DIR32:
-            endian::write_le<uint32_t, unaligned>(
-              &out.front() + rva, ph.ImageBase + li->Operands[0]->RVA);
-            break;
-          case COFF::IMAGE_REL_I386_DIR32NB:
-            endian::write_le<uint32_t, unaligned>(
-              &out.front() + rva, li->Operands[0]->RVA);
-            break;
-          case COFF::IMAGE_REL_I386_REL32:
-            endian::write_le<int32_t, unaligned>(
-              &out.front() + rva, li->Operands[0]->RVA - (rva + 4));
-            break;
-          default:
-            errs() << "Unknown relocation! " << li->RelocType << "\n";
+        // Apply relocations.
+        for (Atom::LinkList_t::iterator li = i->Links.begin(),
+                                        le = i->Links.end(); li != le; ++li) {
+          if (li->Type == Link::LT_Relocation) {
+            uint64_t rva = cast<PhysicalAtom>(i)->getRelativeVirtualAddress()
+                           + li->RelocAddr;
+            uint64_t op0rva = 0;
+            if (DLLImport *a = dyn_cast<DLLImport>(i)) {
+              op0rva = did->getRelativeVirtualAddress() + a->ImportTableIndex;
+            } else if (PhysicalAtom *a =
+                         dyn_cast<PhysicalAtom>(li->Operands[0]))
+              op0rva = a->getRelativeVirtualAddress();
+            switch (li->RelocType) {
+            case COFF::IMAGE_REL_I386_DIR32:
+              endian::write_le<uint32_t, unaligned>(
+                &out.front() + rva, ph.ImageBase + op0rva);
+              break;
+            case COFF::IMAGE_REL_I386_DIR32NB:
+              endian::write_le<uint32_t, unaligned>(
+                &out.front() + rva, op0rva);
+              break;
+            case COFF::IMAGE_REL_I386_REL32:
+              endian::write_le<int32_t, unaligned>(
+                &out.front() + rva, op0rva - (rva + 4));
+              break;
+            default:
+              errs() << "Unknown relocation! " << li->RelocType << "\n";
+            }
           }
         }
       }

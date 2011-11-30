@@ -29,8 +29,8 @@ Module::~Module() {}
 
 static bool SortOffset(const SymbolRef &a, const SymbolRef &b) {
   uint64_t off_a, off_b;
-  if (a.getOffset(off_a)) return false;
-  if (b.getOffset(off_b)) return false;
+  if (a.getFileOffset(off_a)) return false;
+  if (b.getFileOffset(off_b)) return false;
   return off_a < off_b;
 }
 
@@ -63,14 +63,23 @@ static error_code buildSectionSymbolAndAtomMap(Module &m,
       bool defined = symb->SectionNumber > COFF::IMAGE_SYM_UNDEFINED;
       bool external = symb->StorageClass == COFF::IMAGE_SYM_CLASS_EXTERNAL;
       Name n = m.getContext().getName(name);
+      Atom *a;
       if (defined && external)
-        atom[*i] = m.getOrCreateAtom<PhysicalAtom>(n);
+        a = atom[*i] = m.getOrCreateAtom<PhysicalAtom>(n);
       else if (defined)
-        atom[*i] = m.createAtom<PhysicalAtom>(n);
+        a = atom[*i] = m.createAtom<PhysicalAtom>(n);
       else if (external)
-        atom[*i] = m.getOrCreateAtom<Atom>(n);
+        a = atom[*i] = m.getOrCreateAtom<Atom>(n);
       else
-        atom[*i] = m.createAtom<Atom>(n);
+        a = atom[*i] = m.createAtom<Atom>(n);
+      a->Scope = symb->StorageClass == COFF::IMAGE_SYM_CLASS_EXTERNAL
+                   ? Atom::ScopeGlobal
+                   : Atom::ScopeTranslationUnit;
+
+      a->Definition = symb->SectionNumber == COFF::IMAGE_SYM_ABSOLUTE
+                        ? Atom::DefinitionAbsolute
+                        : Atom::DefinitionRegular;
+
     } else
       atom[*i] = m.getOrCreateAtom<Atom>(m.getContext().getName(name));
     if (sec != o->end_sections())
@@ -93,6 +102,28 @@ error_code Module::mergeObject(ObjectFile *o) {
                         e = o->end_sections();
                         i != e; i.increment(ec)) {
     if (ec) return ec;
+    PhysicalAtom::Section *section = new PhysicalAtom::Section;
+    {
+      StringRef name;
+      bool isData;
+      bool isCode;
+      bool isBSS;
+      if (error_code ec = i->getName(name)) return ec;
+      if (error_code ec = i->isData(isData)) return ec;
+      if (error_code ec = i->isText(isCode)) return ec;
+      if (error_code ec = i->isBSS(isBSS)) return ec;
+      section->Identifier = C.getName(name);
+      if (isData)
+        section->Type = PhysicalAtom::Section::InitializedData;
+      else if (isCode)
+        section->Type = PhysicalAtom::Section::Code;
+      else if (isBSS)
+        section->Type = PhysicalAtom::Section::UninitializedData;
+      else
+        section->Type = PhysicalAtom::Section::Unclasified;
+    }
+
+
     // Gather up the symbols this section defines.
     std::vector<SymbolRef> &Symbols = SectionSymbols[*i];
 
@@ -114,9 +145,12 @@ error_code Module::mergeObject(ObjectFile *o) {
     if (Symbols.empty()) {
       StringRef name;
       if (error_code ec = i->getName(name)) return ec;
-      Atom *a = getOrCreateAtom<Atom>(C.getName(name));
-      if (error_code ec = i->getContents(a->Contents)) return ec;
-      a->Defined = true;
+      PhysicalAtom *a =
+        cast<PhysicalAtom>(getOrCreateAtom<Atom>(C.getName(name)));
+      StringRef Contents;
+      if (error_code ec = i->getContents(Contents)) return ec;
+      a->setContents(Contents);
+      a->setInputSection(section);
     } else {
       StringRef Bytes;
       if (error_code ec = i->getContents(Bytes)) return ec;
@@ -125,29 +159,29 @@ error_code Module::mergeObject(ObjectFile *o) {
 
       std::vector<RelocationRef>::const_iterator rel_cur = Rels.begin();
       std::vector<RelocationRef>::const_iterator rel_end = Rels.end();
-      Atom *a = 0;
+      PhysicalAtom *a = 0;
       for (unsigned si = 0, se = Symbols.size(); si != se; ++si) {
         uint64_t Start;
         uint64_t End;
-        Symbols[si].getOffset(Start);
+        Symbols[si].getAddress(Start);
         // The end is either the size of the section or the beginning of the
         // next symbol.
         if (si == se - 1)
           End = SectSize;
         else {
-          Symbols[si + 1].getOffset(End);
+          Symbols[si + 1].getAddress(End);
         }
-        Atom *prev = a;
-        a = SymbolAtoms[Symbols[si]];
+        PhysicalAtom *prev = a;
+        a = cast<PhysicalAtom>(SymbolAtoms[Symbols[si]]);
+        a->setInputSection(section);
         if (End == Start) // Empty
-          a->Contents = StringRef();
+          a->setContents(StringRef());
         else
-          a->Contents = Bytes.substr(Start, End - Start);
-        a->Defined = true;
+          a->setContents(Bytes.substr(Start, End - Start));
         if (prev && si != 0) {
           Link l;
           l.Type = Link::LT_LocationOffsetConstraint;
-          l.ConstraintDistance = prev->Contents.size();
+          l.ConstraintDistance = prev->getPhysicalSize();
           l.Operands.push_back(prev);
           a->Links.push_back(l);
         }
@@ -180,10 +214,10 @@ error_code Module::mergeObject(ObjectFile *o) {
 void Module::printGraph(raw_ostream &o) {
   o << "subgraph \"cluster_" << ObjName.str() << "\" {\n";
   for (atom_iterator i = atom_begin(), e = atom_end(); i != e; ++i) {
-    o << "atom" << i << " [label=\"" << i->_Name.str() << "\"";
-    if (i->Defined)
+    o << "atom" << i << " [label=\"" << i->Identifier.str() << "\"";
+    if (isa<PhysicalAtom>(i))
       o << " shape=box ";
-    if (i->External)
+    if (i->Scope == Atom::ScopeGlobal)
       o << " color=green ";
     o << "];\n";
   }

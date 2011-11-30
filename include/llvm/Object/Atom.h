@@ -47,7 +47,16 @@ class Atom : public ilist_node<Atom> {
   Atom &operator=(const Atom&); // = delete;
 
 protected:
-  Atom();
+  enum AtomKind {
+    AK_Atom              = 0,
+    AK_PhysicalAtom      = 1,
+    AK_DLLImportDataAtom = 2,
+    AK_PhysicalAtomEnd   = 3,
+    AK_DLLImportAtom     = 4,
+    AK_AtomEnd           = 31,
+  };
+
+  Atom(unsigned Type = AK_Atom);
 
   friend class Module;
   friend struct ilist_node_traits<Atom>;
@@ -61,51 +70,88 @@ public:
   typedef std::vector<Link> LinkList_t;
   typedef SmallVector<Atom*, 1> UseList_t;
 
-  /// @brief An enumeration for the kinds of linkage for atoms.
-  enum LinkageTypes {
-    UnknownLinkage = 0,
-    ExternalLinkage,///< Externally visible
-    LinkOnceAnyLinkage, ///< Keep one copy of function when linking (inline)
-    LinkOnceODRLinkage, ///< Same, but only replaced by something equivalent.
-    WeakAnyLinkage,     ///< Keep one copy of named function when linking (weak)
-    WeakODRLinkage,     ///< Same, but only replaced by something equivalent.
-    AppendingLinkage,   ///< Special purpose, only applies to global arrays
-    InternalLinkage,    ///< Rename collisions when linking (static functions).
-    PrivateLinkage,     ///< Like Internal, but omit from symbol table.
-    DLLImportLinkage,   ///< Function to be imported from DLL
-    DLLExportLinkage,   ///< Function to be accessible from DLL.
-    ExternalWeakLinkage,///< ExternalWeak linkage description.
-    CommonLinkage       ///< Tentative definitions.
+  enum ScopeTypes {
+    ScopeTranslationUnit,
+    ScopeLinkageUnit,
+    ScopeGlobal
   };
 
-  /// @brief An enumeration for the kinds of visibility of atoms.
-  enum VisibilityTypes {
-    UnknownVisibility = 0,
-    DefaultVisibility,
-    HiddenVisibility,
-    ProtectedVisibility
+  enum DefinitionTypes {
+    DefinitionRegular,
+    DefinitionTentative,
+    DefinitionAbsolute,
+    DefinitionProxy
+  };
+
+  enum CombineTypes {
+    CombineNever,
+    CombineByName,
+    CombineByNameAndContent,
+    CombineByNameAndReferences
+  };
+
+  enum SymbolTableInclusionTypes {
+    SymbolTableNotIn,
+    SymbolTableNotInFinalLinkedImages,
+    SymbolTableIn,
+    SymbolTableInAndNeverStrip,
+    SymbolTableInAsAbsolute,
+    SymbolTableInWithRandomAutoStripLabel
+  };
+
+  enum WeakImportStateTypes {
+    WeakImportUnset,
+    WeakImportTrue,
+    WeakImportFalse
   };
 
   Name Identifier;
-  unsigned int Linkage    : 4;
-  unsigned int Visibility : 2;
+  unsigned int Scope      : 2;
+  unsigned int Definition : 2;
+  unsigned int Combine    : 2;
+  unsigned int WeakImport : 2;
+  unsigned int Inclusion  : 3;
+  unsigned int TypeID     : 5;
 
   LinkList_t Links;
   UseList_t  Uses;
+
+  unsigned int getType() const { return TypeID; }
+  static inline bool classof(const Atom *v) { return true; }
 };
 
 class PhysicalAtom : public Atom {
+public:
+  struct AlignmentInfo {
+    AlignmentInfo(uint8_t a, uint16_t m) : Modulus(m), PowerOf2(a) {}
+    uint16_t Modulus;
+    uint8_t PowerOf2;
+  };
+
+  struct Section {
+    enum {
+      Unclasified,
+      Code,
+      InitializedData,
+      UninitializedData
+    } Type;
+
+    Name Identifier;
+  };
+
 protected:
-  PhysicalAtom();
+  friend class Module;
+
+  PhysicalAtom(unsigned Type = AK_PhysicalAtom);
   virtual ~PhysicalAtom();
 
   StringRef Contents;
   uint64_t VirtualSize;
-  unsigned int Alignment : 7; ///< log2 of atom alignment.
+  AlignmentInfo Alignment;
   uint64_t VirtualAddress;
   uint64_t RelativeVirtualAddress;
   uint64_t OutputFileAddress;
-  Name OutputSegment;
+  const Section *InputSection;
 
   /// @brief Update the physical contents of an Atom. This also updates the
   ///        physical size.
@@ -135,11 +181,15 @@ public:
     return Contents;
   }
 
+  void setContents(StringRef c) {
+    Contents = c;
+  }
+
   /// @brief Get the physical size of an atom. This is the minimum size it can
   ///        take on disk.
   ///
   /// Gets the physical size of an atom without updating its contents.
-  uint32_t  getPhysicalSize() {
+  uint32_t getPhysicalSize() {
     updatePhysicalSize();
     return Contents.size();
   }
@@ -148,34 +198,52 @@ public:
   ///        shall take in memory when loaded.
   ///
   /// getVirtualSize >= getPhysicalSize();
-  uint64_t  getVirtualSize() {
+  uint64_t getVirtualSize() {
     updateVirtualSize();
     return VirtualSize;
   }
 
   /// @brief Get the log base 2 alignment of the atom.
-  unsigned  getAlignment() {
+  AlignmentInfo getAlignment() const {
     return Alignment;
   }
 
   /// @brief Get the output file address of the atom.
-  uint64_t  getFileAddress() {
+  uint64_t getFileAddress() const {
     OutputFileAddress;
   }
 
   /// @brief Get the virtual address of the atom.
   ///
   /// @returns ~uint64_t(0) if the virtual address is unknown.
-  uint64_t  getVirtualAddress() {
+  uint64_t getVirtualAddress() const {
     return VirtualAddress;
   }
 
   /// @brief Get the virtual address of the atom relative to the image base.
   ///
   /// @returns ~uint64_t(0) if the relative virtual address is unknown.
-  uint64_t  getRelativeVirtualAddress() {
+  uint64_t getRelativeVirtualAddress() const {
     return RelativeVirtualAddress;
   }
+
+  void setRelativeVirtualAddress(uint64_t rva) {
+    RelativeVirtualAddress = rva;
+  }
+
+  const Section *getInputSection() const {
+    return InputSection;
+  }
+
+  void setInputSection(const Section *is) {
+    InputSection = is;
+  }
+
+  static inline bool classof(const Atom *v) {
+    return v->getType() >= AK_PhysicalAtom
+           && v->getType() < AK_PhysicalAtomEnd;
+  }
+  static inline bool classof(const PhysicalAtom *v) { return true; }
 };
 
 }

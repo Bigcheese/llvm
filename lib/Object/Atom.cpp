@@ -13,20 +13,26 @@
 using namespace llvm;
 using namespace object;
 
-Atom::Atom()
-  : Linkage(UnknownLinkage)
-  , Visibility(UnknownVisibility) {
+Atom::Atom(unsigned Type)
+  : Scope(0)
+  , Definition(0)
+  , Combine(0)
+  , WeakImport(0)
+  , Inclusion(0)
+  , TypeID(Type) {
 }
 
 Atom::~Atom() {
 }
 
-PhysicalAtom::PhysicalAtom()
-  : VirtualSize(0)
-  , Alignment(0)
+PhysicalAtom::PhysicalAtom(unsigned Type)
+  : Atom(Type)
+  , VirtualSize(0)
+  , Alignment(0, 0)
   , VirtualAddress(~uint64_t(0))
   , RelativeVirtualAddress(~uint64_t(0))
-  , OutputFileAddress(~uint64_t(0)) {
+  , OutputFileAddress(~uint64_t(0))
+  , InputSection(0) {
 }
 
 PhysicalAtom::~PhysicalAtom() {

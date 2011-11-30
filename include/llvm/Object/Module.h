@@ -60,12 +60,12 @@ public:
     AtomMap_t::const_iterator atom = AtomMap.find(name);
     if (atom == AtomMap.end()) {
       T *a = new T;
-      a->_Name = name;
+      a->Identifier = name;
       Atoms.push_back(a);
       AtomMap.insert(std::make_pair(name, a));
       return a;
     } else
-      return atom->second;
+      return cast<T>(atom->second);
   }
 
   /// @brief Create an anonymous atom.
@@ -76,9 +76,9 @@ public:
   T *createAtom(Name name = Name()) {
     T *a = new T;
     if (name.str().size() == 0)
-      a->_Name = C.getName(Twine("atom") + Twine(intptr_t(a)));
+      a->Identifier = C.getName(Twine("atom") + Twine(intptr_t(a)));
     else
-      a->_Name = name;
+      a->Identifier = name;
     Atoms.push_back(a);
     // Don't add to AtomMap, as it should not be looked up by name.
     return a;
