@@ -1,0 +1,13 @@
+%YAML 1.1
+---
+header: !Header
+  Machine: 0x0000
+  NumberOfSections: 0
+  TimeDateStamp: 0
+  PointerToSymbolTable: 0x9B
+  NumberOfSymbols: 7
+  SizeOfOptionalHeader: 0
+  Characteristics: 0
+
+sections:
+  -
