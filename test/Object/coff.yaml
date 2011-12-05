@@ -1,13 +1,45 @@
-%YAML 1.1
+%YAML 1.2
 ---
 header: !Header
   Machine: 0x0000
-  NumberOfSections: 0
   TimeDateStamp: 0
-  PointerToSymbolTable: 0x9B
-  NumberOfSymbols: 7
   SizeOfOptionalHeader: 0
   Characteristics: 0
 
 sections:
-  -
+ - !Section
+   Name: .text
+   VirtualSize: 0
+   VirtualAddress: 0
+   PointerToLineNumbers: 0
+   NumberOfRelocations: 1
+   NumberOfLineNumbers: 0
+   Characteristics: [IMAGE_SCN_CNT_CODE, IMAGE_SCN_ALIGN_16BYTES,
+                     IMAGE_SCN_MEM_EXECUTE, IMAGE_SCN_MEM_READ]
+   SectionData: "\x83\xEC\x0C\xA1\x00\x00\x00\x00"
+   Relocations:
+   - !Relocation
+     VirtualAddress: 0x4
+     SymbolTableIndex: 0
+     Type: IMAGE_REL_I386_DIR32
+ - !Section
+   Name: .data$xodea
+   SectionData: "klsf hello world!!!!!!!"
+
+symbols:
+ - !Symbol
+   Name: .text
+   Value: 0
+   SectionNumber: 1
+   SimpleType: IMAGE_SYM_TYPE_NULL
+   ComplexType: IMAGE_SYM_DTYPE_NULL
+   StorageClass: IMAGE_SYM_CLASS_STATIC
+   NumberOfAuxSymbols: 1
+   AuxillaryData: "\x25\x00\x00\x00\x04\x00\x00\x00"
+ - !Symbol
+   Name: ?fooadena@XOFK@DKDJ@ODJE??????
+   Value: 42
+   SectionNumber: 3
+
+strtab:
+ - .text
