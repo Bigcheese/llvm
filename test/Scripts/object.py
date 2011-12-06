@@ -38,10 +38,12 @@ def yaml(args):
     }
 
   ComplexType = {
-      'IMAGE_SYM_DTYPE_NULL': 0
+      'IMAGE_SYM_DTYPE_NULL': 0,
+      'IMAGE_SYM_DTYPE_FUNCTION': 2
     }
 
   StorageClass = {
+      'IMAGE_SYM_CLASS_EXTERNAL': 2,
       'IMAGE_SYM_CLASS_STATIC': 3
     }
 
