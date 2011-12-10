@@ -14,7 +14,7 @@ def symname(value):
   else:
     return '%s'
 
-file = ('struct', [
+file = [('struct', 'header', '!Header', [
   ('MachineType', ('enum', '<H', '0x%X', {
     0x0:    'IMAGE_FILE_MACHINE_UNKNOWN',
     0x1d3:  'IMAGE_FILE_MACHINE_AM33',
@@ -58,8 +58,8 @@ file = ('struct', [
     (0x2000,      'IMAGE_FILE_DLL',                     ),
     (0x4000,      'IMAGE_FILE_UP_SYSTEM_ONLY',          ),
     (0x8000,      'IMAGE_FILE_BYTES_REVERSED_HI',       ),
-  ])),
-  ('Sections', ('array', '1', 'NumberOfSections', ('struct', [
+  ]))]),
+  ('array', 'sections', '1', 'NumberOfSections', ('struct', '', '!Section', [
     ('Name',                 ('scalar',  '<8s', secname)),
     ('VirtualSize',          ('scalar',  '<L',  '%d'   )),
     ('VirtualAddress',       ('scalar',  '<L',  '%d'   )),
@@ -109,7 +109,7 @@ file = ('struct', [
       (0x80000000, 'IMAGE_SCN_MEM_WRITE'),
     ])),
     ('SectionData', ('ptr', 'PointerToRawData', ('blob', 'SizeOfRawData'))),
-    ('Relocations', ('ptr', 'PointerToRelocations', ('array', '0', 'NumberOfRelocations', ('struct', [
+    ('Relocations', ('ptr', 'PointerToRelocations', ('array', '', '0', 'NumberOfRelocations', ('struct', '', '!Relocation', [
       ('VirtualAddress',   ('scalar', '<L', '0x%X')),
       ('SymbolTableIndex', ('scalar', '<L', '%d'  )),
       ('Type',             ('enum', '<H', '%d', ('MachineType', {
@@ -148,8 +148,8 @@ file = ('struct', [
       }))),
       ('SymbolName',       ('ptr', '+ PointerToSymbolTable * SymbolTableIndex 18', ('scalar',  '<8s', symname)))
     ])))),
-  ]))),
-  ('Symbols', ('ptr', 'PointerToSymbolTable', ('byte-array', '18', '* NumberOfSymbols 18',  ('struct', [
+  ])),
+  ('ptr', 'PointerToSymbolTable', ('byte-array', 'symbols', '18', '* NumberOfSymbols 18',  ('struct', '', '!Symbol', [
     ('Name',                ('scalar',  '<8s', symname)),
     ('Value',               ('scalar',  '<L',  '%d'   )),
     ('SectionNumber',       ('scalar',  '<H',  '%d'   )),
@@ -209,8 +209,7 @@ file = ('struct', [
     })),
     ('NumberOfAuxSymbols',  ('scalar',  '<B',  '%d'  )),
     ('AuxillaryData', ('blob', '* NumberOfAuxSymbols 18')),
-  ])))),
-])
+  ])))]
 
 #
 # Definition Interpreter
@@ -242,6 +241,9 @@ def write(input):
     if NewLine:
       output += Indent * '  '
       NewLine = False
+
+    if char == chr(0):
+      char = ' '
 
     output += char
 
@@ -276,6 +278,8 @@ def pop_pos():
 
 def print_binary_data(size):
   value = ""
+  bytes = ""
+  text = ""
   while size > 0:
     if size >= 16:
       data = Input.read(16)
@@ -284,24 +288,16 @@ def print_binary_data(size):
       data = Input.read(size)
       size = 0
     value += data
-    bytes = ""
-    text = ""
     for index in xrange(16):
       if index < len(data):
-        if index == 8:
-          bytes += "- "
         ch = ord(data[index])
-        bytes += "%02X " % ch
+        bytes += "\\x%02X" % ch
         if ch >= 0x20 and ch <= 0x7F:
           text += data[index]
         else:
           text += "."
-      else:
-        if index == 8:
-          bytes += "  "
-        bytes += "   "
 
-    write("%s|%s|\n" % (bytes, text))
+  write("\"%s\" # |%s|\n" % (bytes, text))
   return value
 
 idlit = re.compile("[a-zA-Z_][a-zA-Z0-9_-]*")
@@ -399,7 +395,7 @@ def handle_enum(entry):
   else:
     description = "unknown"
 
-  write("%s (" % description)
+  write("%s # (" % description)
   write_value(oformat, value)
   write(")")
 
@@ -412,9 +408,7 @@ def handle_flags(entry):
 
   value = read_value(iformat)
 
-  write_value(oformat, value)
-
-  indent()
+  write('[')
   for entry in definitions:
     mask = entry[0]
     name = entry[1]
@@ -422,23 +416,30 @@ def handle_flags(entry):
       map = entry[2]
       selection = value & mask
       if selection in map:
-        write("\n%s" % map[selection])
+        write("%s, " % map[selection])
       else:
-        write("\n%s <%d>" % (name, selection))
+        write("%s <%d>, " % (name, selection))
     elif len(entry) == 2:
       if value & mask != 0:
-        write("\n%s" % name)
-  dedent()
+        write("%s, " % name)
+  write('] # ')
+  write_value(oformat, value)
 
   return value
 
 def handle_struct(entry):
   global Fields
-  members = entry[1]
+  members = entry[3]
 
   newFields = {}
 
-  write("{\n");
+  name = ''
+  t    = ''
+  if len(entry[1]) > 0:
+    name = "%s: " % entry[1]
+  if len(entry[2]) > 0:
+    t = entry[2]
+  write("%s%s\n" % (name, t))
   indent()
 
   for member in members:
@@ -446,7 +447,7 @@ def handle_struct(entry):
     type = member[1]
 
     if name[0] != "_":
-      write("%s = " % name.ljust(24))
+      write("%s: " % name)
 
     value = handle_element(type)
 
@@ -457,42 +458,49 @@ def handle_struct(entry):
     newFields[name] = value
 
   dedent()
-  write("}")
+  # write("}")
 
   return newFields
 
 def handle_array(entry):
-  start_index = entry[1]
-  length = entry[2]
-  element = entry[3]
+  name = entry[1]
+  start_index = entry[2]
+  length = entry[3]
+  element = entry[4]
 
   newItems = []
 
-  write("[\n")
+  if len(name) > 0:
+    write("%s:\n" % name)
+  else:
+    write('\n')
   indent()
 
   start_index = read_value(start_index)
   value = read_value(length)
 
   for index in xrange(value):
-    write("%d = " % (index + start_index))
+    write('- ')
     value = handle_element(element)
     write("\n")
     newItems.append(value)
 
   dedent()
-  write("]")
 
   return newItems
 
 def handle_byte_array(entry):
-  ent_size = entry[1]
-  length = entry[2]
-  element = entry[3]
+  name = entry[1]
+  ent_size = entry[2]
+  length = entry[3]
+  element = entry[4]
 
   newItems = []
 
-  write("[\n")
+  if len(name) > 0:
+    write("%s:\n" % name)
+  else:
+    write('\n')
   indent()
 
   item_size = read_value(ent_size)
@@ -502,7 +510,7 @@ def handle_byte_array(entry):
   prev_loc = Input.tell()
   index = 0
   while Input.tell() < end_of_array:
-    write("%d = " % index)
+    write('- ')
     value = handle_element(element)
     write("\n")
     newItems.append(value)
@@ -510,7 +518,6 @@ def handle_byte_array(entry):
     prev_loc = Input.tell()
 
   dedent()
-  write("]")
 
   return newItems
 
@@ -564,8 +571,10 @@ def handle_element(entry):
   return handlers[entry[0]](entry)
 
 def dump_coff(stream):
+  global Input
   Input = stream
-  handle_element(file)
+  for e in file:
+    handle_element(e)
 
 import yaml, types, struct
 
@@ -580,9 +589,17 @@ def default(v, d):
     return d
   return v
 
-SIZEOF_HEADER  = 20
-SIZEOF_SECTION = 40
-SIZEOF_SYMBOL  = 18
+SIZEOF_HEADER     = 20
+SIZEOF_SECTION    = 40
+SIZEOF_RELOCATION = 10
+SIZEOF_SYMBOL     = 18
+
+MachineTypes = {
+    'IMAGE_FILE_MACHINE_I386': 0x14C
+  }
+
+HeaderChars = {
+  }
 
 SecChars = {
     'IMAGE_SCN_CNT_CODE':      0x00000020,
@@ -596,18 +613,22 @@ SimpleType = {
   }
 
 ComplexType = {
-    'IMAGE_SYM_DTYPE_NULL': 0,
+    'IMAGE_SYM_DTYPE_NULL':     0,
     'IMAGE_SYM_DTYPE_FUNCTION': 2
   }
 
 StorageClass = {
     'IMAGE_SYM_CLASS_EXTERNAL': 2,
-    'IMAGE_SYM_CLASS_STATIC': 3
+    'IMAGE_SYM_CLASS_STATIC':   3
+  }
+
+RelocationTypes = {
+    'IMAGE_REL_I386_DIR32': 6
   }
 
 class COFFHeader(yaml.YAMLObject):
   yaml_tag = u'!Header'
-  Machine              = None
+  MachineType          = None
   NumberOfSections     = None
   TimeDateStamp        = None
   PointerToSymbolTable = None
@@ -616,7 +637,7 @@ class COFFHeader(yaml.YAMLObject):
   Characteristics      = None
 
   def layout(self, coff):
-    self.Machine = default(self.Machine, 0)
+    self.MachineType = default(self.MachineType, 0)
     self.NumberOfSections = default(self.NumberOfSections, len(coff.sections))
     self.TimeDateStamp = default(self.TimeDateStamp, 0)
     self.SizeOfOptionalHeader = default(self.SizeOfOptionalHeader, 0)
@@ -626,8 +647,17 @@ class COFFHeader(yaml.YAMLObject):
     self.NumberOfSymbols = default(self.NumberOfSymbols, len(coff.symbols))
     self.Characteristics = default(self.Characteristics, 0)
 
+    if type(self.MachineType) == types.StringType:
+      self.MachineType = MachineTypes[self.MachineType]
+
+    if type(self.Characteristics) == types.ListType:
+      res = 0
+      for c in self.Characteristics:
+        res |= HeaderChars[c]
+      self.Characteristics = res
+
   def write(self):
-    return [(struct.pack('<H', self.Machine), 'Machine'),
+    return [(struct.pack('<H', self.MachineType), 'MachineType'),
             (struct.pack('<H', self.NumberOfSections), 'NumberOfSections'),
             (struct.pack('<I', self.TimeDateStamp), 'TimeDateStamp'),
             (struct.pack('<I', self.PointerToSymbolTable),
@@ -652,7 +682,7 @@ class COFFSection(yaml.YAMLObject):
   NumberOfLineNumbers  = None
   Characteristics      = None
   SectionData          = None
-  Relocations          = None
+  Relocations          = []
 
   def layout(self, coff, index):
     self.Index = default(self.Index, index)
@@ -676,6 +706,9 @@ class COFFSection(yaml.YAMLObject):
       for c in self.Characteristics:
         res |= SecChars[c]
       self.Characteristics = res
+
+    for reloc in self.Relocations:
+      reloc.layout(coff)
 
   def decode_name(self, coff, name):
     if name[0] == '/':
@@ -706,7 +739,12 @@ class COFFSection(yaml.YAMLObject):
             (self.SectionData, 'Data')]
 
   def write_relocations(self):
-    return [(None, None)]
+    ret = []
+    for r in self.Relocations:
+      ret.append([(struct.pack('<I', r.VirtualAddress), 'VirtualAddress'),
+                  (struct.pack('<I', r.SymbolTableIndex),'SymbolTableIndex'),
+                  (struct.pack('<H', r.Type), 'Type')])
+    return ret
 
 class COFFRelocation(yaml.YAMLObject):
   yaml_tag = u'!Relocation'
@@ -715,7 +753,8 @@ class COFFRelocation(yaml.YAMLObject):
   Type             = None
 
   def layout(self, coff):
-    pass
+    if type(self.Type) == types.StringType:
+      self.Type = RelocationTypes[self.Type]
 
 class COFFSymbol(yaml.YAMLObject):
   yaml_tag = u'!Symbol'
@@ -755,7 +794,7 @@ class COFFSymbol(yaml.YAMLObject):
     if name[0] != 0:
       return name
     else:
-      return coff.strtab.get(struct.unpack('<II', name)[1])
+      bytes = coff.strtab.get(struct.unpack('<II', name)[1])
 
   def write(self, coff):
     return [(None, 'Symbol %d' % self.Index),
@@ -832,6 +871,8 @@ class COFF:
       if s.PointerToRawData == 0 and s.SizeOfRawData != 0:
         s.PointerToRawData = curoffset
         curoffset += s.SizeOfRawData
+        s.PointerToRelocations = curoffset
+        curoffset += s.NumberOfRelocations * SIZEOF_RELOCATION
 
     index = 0
     for s in self.symbols:
@@ -845,19 +886,18 @@ class COFF:
     # Write out section headers.
     for sec in self.sections:
       write_hexbytes_comment(sec.write_header(self))
-    # Write out symbol table.
-    for symb in self.symbols:
-      write_hexbytes_comment(symb.write(self))
     # Write out section data.
     for sec in self.sections:
       write_hexbytes_comment(sec.write_contents())
-    # Write out relocations.
-    for sec in self.sections:
       write_hexbytes_comment(sec.write_relocations())
+    # Write out symbol table.
+    for symb in self.symbols:
+      write_hexbytes_comment(symb.write(self))
     # Write out strtab
     write_hexbytes_comment(self.strtab.write())
 
 def make_coff(stream):
-  c = COFF(yaml.load(stream))
+  yd = yaml.load(stream)
+  c = COFF(yd)
   c.layout()
   return c
