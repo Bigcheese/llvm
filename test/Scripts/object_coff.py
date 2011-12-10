@@ -536,9 +536,6 @@ def handle_ptr(entry):
 
     pop_pos()
 
-  else:
-    write("None")
-
   return value
 
 def handle_blob(entry):
@@ -641,9 +638,7 @@ class COFFHeader(yaml.YAMLObject):
     self.NumberOfSections = default(self.NumberOfSections, len(coff.sections))
     self.TimeDateStamp = default(self.TimeDateStamp, 0)
     self.SizeOfOptionalHeader = default(self.SizeOfOptionalHeader, 0)
-    self.PointerToSymbolTable = default(self.PointerToSymbolTable,
-            (SIZEOF_HEADER + self.SizeOfOptionalHeader) + \
-            (self.NumberOfSections * SIZEOF_SECTION))
+    self.PointerToSymbolTable = default(self.PointerToSymbolTable, 0)
     self.NumberOfSymbols = default(self.NumberOfSymbols, len(coff.symbols))
     self.Characteristics = default(self.Characteristics, 0)
 
@@ -682,7 +677,7 @@ class COFFSection(yaml.YAMLObject):
   NumberOfLineNumbers  = None
   Characteristics      = None
   SectionData          = None
-  Relocations          = []
+  Relocations          = None
 
   def layout(self, coff, index):
     self.Index = default(self.Index, index)
@@ -693,6 +688,8 @@ class COFFSection(yaml.YAMLObject):
       self.Name = '/%d' % self.Name
     self.VirtualSize = default(self.VirtualSize, 0)
     self.VirtualAddress = default(self.VirtualAddress, 0)
+    self.SectionData = default(self.SectionData, '')
+    self.Relocations = default(self.Relocations, [])
     self.SizeOfRawData = default(self.SizeOfRawData, len(self.SectionData))
     self.PointerToRawData = default(self.PointerToRawData, 0)
     self.PointerToRelocations = default(self.PointerToRelocations, 0)
@@ -706,7 +703,6 @@ class COFFSection(yaml.YAMLObject):
       for c in self.Characteristics:
         res |= SecChars[c]
       self.Characteristics = res
-
     for reloc in self.Relocations:
       reloc.layout(coff)
 
@@ -741,7 +737,8 @@ class COFFSection(yaml.YAMLObject):
   def write_relocations(self):
     ret = []
     for r in self.Relocations:
-      ret.append([(struct.pack('<I', r.VirtualAddress), 'VirtualAddress'),
+      ret.extend([(None, 'Relocation'),
+                  (struct.pack('<I', r.VirtualAddress), 'VirtualAddress'),
                   (struct.pack('<I', r.SymbolTableIndex),'SymbolTableIndex'),
                   (struct.pack('<H', r.Type), 'Type')])
     return ret
@@ -791,10 +788,10 @@ class COFFSymbol(yaml.YAMLObject):
       self.StorageClass = StorageClass[self.StorageClass]
 
   def decode_name(self, coff, name):
-    if name[0] != 0:
+    if ord(name[0]) != 0:
       return name
     else:
-      bytes = coff.strtab.get(struct.unpack('<II', name)[1])
+      return coff.strtab.get(struct.unpack('<II', name)[1])
 
   def write(self, coff):
     return [(None, 'Symbol %d' % self.Index),
@@ -864,15 +861,14 @@ class COFF:
   def layout(self):
     self.header.layout(self)
 
-    curoffset = self.header.PointerToSymbolTable + \
-                  self.header.NumberOfSymbols * SIZEOF_SYMBOL
+    curoffset = SIZEOF_HEADER + self.header.NumberOfSections * SIZEOF_SECTION
     for i, s in enumerate(self.sections):
       s.layout(self, i)
-      if s.PointerToRawData == 0 and s.SizeOfRawData != 0:
-        s.PointerToRawData = curoffset
-        curoffset += s.SizeOfRawData
-        s.PointerToRelocations = curoffset
-        curoffset += s.NumberOfRelocations * SIZEOF_RELOCATION
+      s.PointerToRawData = curoffset
+      curoffset += s.SizeOfRawData
+      s.PointerToRelocations = curoffset
+      curoffset += s.NumberOfRelocations * SIZEOF_RELOCATION
+    self.header.PointerToSymbolTable = curoffset
 
     index = 0
     for s in self.symbols:
