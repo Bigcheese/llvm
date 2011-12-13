@@ -1,0 +1,96 @@
+4C 01 # MachineType
+02 00 # NumberOfSections
+00 00 00 00 # TimeDateStamp
+B3 00 00 00 # PointerToSymbolTable
+08 00 00 00 # NumberOfSymbols
+00 00 # SizeOfOptionalHeader
+00 00 # Characteristics
+# Section 0
+2E 74 65 78 74 00 00 00 # Name: .text
+00 00 00 00 # VirtualSize
+00 00 00 00 # VirtualAddress
+24 00 00 00 # SizeOfRawData
+64 00 00 00 # PointerToRawData
+88 00 00 00 # PointerToRelocations
+00 00 00 00 # PointerToLineNumbers
+03 00 # NumberOfRelocations
+00 00 # NumberOfLineNumbers
+20 00 50 60 # Characteristics
+# Section 1
+2E 64 61 74 61 00 00 00 # Name: .data
+00 00 00 00 # VirtualSize
+00 00 00 00 # VirtualAddress
+0D 00 00 00 # SizeOfRawData
+A6 00 00 00 # PointerToRawData
+B3 00 00 00 # PointerToRelocations
+00 00 00 00 # PointerToLineNumbers
+00 00 # NumberOfRelocations
+00 00 # NumberOfLineNumbers
+40 00 10 C0 # Characteristics
+# Section 0 Data
+83 EC 0C C7 44 24 08 00 00 00 00 C7 04 24 00 00 00 00 E8 00 00 00 00 E8 00 00 00 00 8B 44 24 08 83 C4 0C C3 # Data
+# Relocation
+0E 00 00 00 # VirtualAddress
+05 00 00 00 # SymbolTableIndex
+06 00 # Type
+# Relocation
+13 00 00 00 # VirtualAddress
+06 00 00 00 # SymbolTableIndex
+14 00 # Type
+# Relocation
+18 00 00 00 # VirtualAddress
+07 00 00 00 # SymbolTableIndex
+14 00 # Type
+# Section 1 Data
+48 65 6C 6C 6F 20 57 6F 72 6C 64 21 00 # Data
+# Symbol 0
+2E 74 65 78 74 00 00 00 # Name: .text
+00 00 00 00 # Value
+01 00 # SectionNumber
+00 00 # Type
+03 # StorageClass
+01 # NumberOfAuxSymbols
+24 00 00 00 03 00 00 00 00 00 00 00 01 00 00 00 00 00 # Auxillary Data
+# Symbol 2
+2E 64 61 74 61 00 00 00 # Name: .data
+00 00 00 00 # Value
+02 00 # SectionNumber
+00 00 # Type
+03 # StorageClass
+01 # NumberOfAuxSymbols
+0D 00 00 00 00 00 00 00 00 00 00 00 02 00 00 00 00 00 # Auxillary Data
+# Symbol 4
+5F 6D 61 69 6E 00 00 00 # Name: _main
+00 00 00 00 # Value
+01 00 # SectionNumber
+00 00 # Type
+02 # StorageClass
+00 # NumberOfAuxSymbols
+# Auxillary Data
+# Symbol 5
+4C 5F 2E 73 74 72 00 00 # Name: L_.str
+00 00 00 00 # Value
+02 00 # SectionNumber
+00 00 # Type
+03 # StorageClass
+00 # NumberOfAuxSymbols
+# Auxillary Data
+# Symbol 6
+5F 70 75 74 73 00 00 00 # Name: _puts
+00 00 00 00 # Value
+00 00 # SectionNumber
+00 00 # Type
+02 # StorageClass
+00 # NumberOfAuxSymbols
+# Auxillary Data
+# Symbol 7
+00 00 00 00 04 00 00 00 # Name: _SomeOtherFunction
+00 00 00 00 # Value
+00 00 # SectionNumber
+00 00 # Type
+02 # StorageClass
+00 # NumberOfAuxSymbols
+# Auxillary Data
+# String Table
+17 00 00 00 # Size
+5F 53 6F 6D 65 4F 74 68 65 72 46 75 6E 63 74 69 6F 6E 00 # _SomeOtherFunction
