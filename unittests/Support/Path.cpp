@@ -328,7 +328,7 @@ TEST_F(FileSystemTest, Canonicalize) {
   }
 
   SmallString<0> res;
-  ASSERT_NO_ERROR(fs::canonicalize(Twine(TestDirectory)
+  ASSERT_NO_ERROR(fs::canonicalize_case(Twine(TestDirectory)
                                    + "/cAnOnIcAlIzE/A0/aA1/fIlE.TxT", res));
   // Only check if we actually found the file. As we won't find it on case
   // sensitive file systems.

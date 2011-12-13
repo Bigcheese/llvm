@@ -614,12 +614,53 @@ retry_create_file:
   return success;
 }
 
+error_code blah(StringRef path, SmallVectorImpl<char> &result) {
+  error_code ec;
+  // Start at the root, and iterate until we get to the end.
+  StringRef rootp = path::root_path(path);
+  recursive_directory_iterator diri(rootp, ec);
+  if (ec)
+    return ec;
+  path::append(result, path::begin(rootp), path::end(rootp));
+  // Skip the root path.
+  StringRef relpath = path::relative_path(path);
+  path::const_iterator pathi = path::begin(relpath);
+  path::const_iterator pathe = path::end(relpath);
+
+  for (recursive_directory_iterator dire; diri != dire && pathi != pathe;
+       diri.increment(ec)) {
+    if (ec)
+      return ec;
+    std::string path_lower = pathi->lower();
+    StringRef dir = path::filename(diri->path());
+    std::string dir_lower = dir.lower();
+    if (path_lower == dir_lower) {
+      path::append(result, dir);
+      ++pathi;
+    } else {
+      // Don't go into this directory.
+      diri.no_push();
+    }
+  }
+
+  bool same;
+  if (error_code ec = equivalent(path, StringRef(result.data(), result.size()), same))
+    return ec;
+
+  if (!same)
+    return error_code(errc::invalid_argument, generic_category());
+
+  return success;
+}
+
 error_code canonicalize_case(const Twine &path, SmallVectorImpl<char> &result) {
   assert(path::is_absolute(path) && "path must be absolute!");
   SmallString<128> path_storage;
   StringRef p = path.toStringRef(path_storage);
   SmallVector<wchar_t, 128> path_utf16;
   result.set_size(0);
+
+  return blah(p, result);
 
   // Convert path to UTF-16.
   if (error_code ec = UTF8ToUTF16(p, path_utf16))
