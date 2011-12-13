@@ -431,6 +431,12 @@ rety_open_create:
   return success;
 }
 
+error_code canonicalize_case(const Twine &path, SmallVectorImpl<char> &result) {
+  assert(path::is_absolute(path) && "path must be absolute!");
+  path.toVector(result);
+  return success;
+}
+
 error_code detail::directory_iterator_construct(detail::DirIterState &it,
                                                 StringRef path){
   SmallString<128> path_null(path);

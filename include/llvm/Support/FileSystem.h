@@ -387,16 +387,21 @@ error_code unique_file(const Twine &model, int &result_fd,
                              SmallVectorImpl<char> &result_path,
                              bool makeAbsolute = true);
 
-/// @brief Canonicalize path.
+/// @brief Canonicalize path's case.
 ///
-/// Sets result to the file system's idea of what path is. The result is always
-/// absolute and has the same capitalization as the file system.
+/// Sets result to the file system's idea of what path's case is. Path must be
+/// absolute. It must contain no .'s or ..'s, but it may contain symlinks, which
+/// shall be preserved. The result has the same case as the file system.
+///
+/// Example: Give a file system with "C:\a\b\c\file.txt".
+///
+/// C:\A\b\C\fIlE.TxT => C:\a\b\c\file.txt
 ///
 /// @param path Input path.
-/// @param result Set to the canonicalized version of \a path.
+/// @param result Set to the case-canonicalized version of \a path.
 /// @results errc::success if result has been successfully set, otherwise a
 ///          platform specific error_code.
-error_code canonicalize(const Twine &path, SmallVectorImpl<char> &result);
+error_code canonicalize_case(const Twine &path, SmallVectorImpl<char> &result);
 
 /// @brief Are \a path's first bytes \a magic?
 ///
