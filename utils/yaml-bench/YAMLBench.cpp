@@ -91,6 +91,10 @@ struct StreamStartInfo {
   BOMType BOM;
 };
 
+struct VersionDirectiveInfo {
+  StringRef Value;
+};
+
 struct Token {
   enum TokenKind {
     TK_Null, // Uninitialized token.
@@ -105,6 +109,13 @@ struct Token {
     TK_BlockSequenceStart,
     TK_BlockSequenceEnd,
     TK_BlockMappingStart,
+    TK_FlowEntry,
+    TK_FlowSequenceStart,
+    TK_FlowSequenceEnd,
+    TK_FlowMappingStart,
+    TK_FlowMappingEnd,
+    TK_Key,
+    TK_Value
   } Kind;
 
   StringRef Range;
@@ -112,6 +123,7 @@ struct Token {
   union {
     StreamStartInfo StreamStart;
   };
+  VersionDirectiveInfo VersionDirective;
 
   Token() : Kind(TK_Null) {}
 };
@@ -248,12 +260,31 @@ class Scanner {
     return Pos;
   }
 
+  StringRef::iterator skip_s_white(StringRef::iterator Pos) {
+    if (Pos == End)
+      return Pos;
+    if (*Pos == ' ' || *Pos == '\t')
+      return Pos + 1;
+    return Pos;
+  }
+
   StringRef::iterator skip_ns_char(StringRef::iterator Pos) {
     if (Pos == End)
       return Pos;
     if (*Pos == ' ' || *Pos == '\t')
       return Pos;
     return skip_nb_char(Pos);
+  }
+
+  template<StringRef::iterator (Scanner::*Func)(StringRef::iterator)>
+  StringRef::iterator skip_while(StringRef::iterator Pos) {
+    while (true) {
+      StringRef::iterator i = (this->*Func)(Pos);
+      if (i == Pos)
+        break;
+      Pos = i;
+    }
+    return Pos;
   }
 
   StringRef scan_ns_plain_one_line() {
@@ -307,12 +338,16 @@ class Scanner {
     return false;
   }
 
+  void skip(uint32_t Distance) {
+    Cur += Distance;
+    Column += Distance;
+  }
+
   // Skip whitespace while keeping track of line number and column.
   void scanToNextToken() {
     while (true) {
       while (*Cur == ' ') {
-        ++Cur;
-        ++Column;
+        skip(1);
       }
 
       // Skip comment.
@@ -371,7 +406,7 @@ class Scanner {
     return true;
   }
 
-  bool unrollIndent(unsigned Col) {
+  bool unrollIndent(int Col) {
     Token t;
     // Indentation is ignored in flow.
     if (FlowLevel != 0)
@@ -390,22 +425,125 @@ class Scanner {
     // Reset the indentation level.
     unrollIndent(-1);
 
+    StringRef::iterator Start = Cur;
+    consume('%');
+    StringRef::iterator NameStart = Cur;
+    Cur = skip_while<&Scanner::skip_ns_char>(Cur);
+    StringRef Name(NameStart, Cur - NameStart);
+    Cur = skip_while<&Scanner::skip_s_white>(Cur);
 
+    if (Name == "YAML") {
+      StringRef::iterator VersionStart = Cur;
+      Cur = skip_while<&Scanner::skip_ns_char>(Cur);
+      StringRef Version(VersionStart, Cur - VersionStart);
+      Token t;
+      t.Kind = Token::TK_VersionDirective;
+      t.Range = StringRef(Start, Cur - Start);
+      t.VersionDirective.Value = Version;
+      TokenQueue.push(t);
+      return true;
+    }
+    return false;
+  }
+
+  bool scanDocumentIndicator(bool IsStart) {
+    unrollIndent(-1);
+    Token t;
+    t.Kind = IsStart ? Token::TK_DocumentStart : Token::TK_DocumentEnd;
+    t.Range = StringRef(Cur, 3);
+    skip(3);
+    TokenQueue.push(t);
+    return true;
+  }
+
+  bool scanFlowCollectionStart(bool IsSequence) {
+    Token t;
+    t.Kind = IsSequence ? Token::TK_FlowSequenceStart
+                        : Token::TK_FlowMappingStart;
+    t.Range = StringRef(Cur, 1);
+    skip(1);
+    TokenQueue.push(t);
+    ++FlowLevel;
+    return true;
+  }
+
+  bool scanFlowCollectionEnd(bool IsSequence) {
+    Token t;
+    t.Kind = IsSequence ? Token::TK_FlowSequenceEnd
+                        : Token::TK_FlowMappingEnd;
+    t.Range = StringRef(Cur, 1);
+    skip(1);
+    TokenQueue.push(t);
+    if (FlowLevel)
+      --FlowLevel;
+    return true;
+  }
+
+  bool scanBlockEntry() {
+    Token t;
+    t.Kind = Token::TK_BlockEntry;
+    t.Range = StringRef(Cur, 1);
+    skip(1);
+    TokenQueue.push(t);
+    return true;
+  }
+
+  bool scanValue() {
+    Token t;
+    t.Kind = Token::TK_Value;
+    t.Range = StringRef(Cur, 1);
+    skip(1);
+    TokenQueue.push(t);
+    return true;
   }
 
   bool fetchMoreTokens() {
     if (IsStartOfStream)
       return scanStreamStart();
 
+    scanToNextToken();
+
     if (Cur == End)
       return scanStreamEnd();
-
-    scanToNextToken();
 
     unrollIndent(Column);
 
     if (Column == 0 && *Cur == '%')
       return scanDirective();
+
+    if (Column == 0 && Cur + 4 < End
+        && *Cur == '-'
+        && *(Cur + 1) == '-'
+        && *(Cur + 2) == '-'
+        && (isBlankOrBreak(Cur + 3) || Cur + 3 == End))
+      return scanDocumentIndicator(true);
+
+    if (Column == 0 && Cur + 4 < End
+        && *Cur == '.'
+        && *(Cur + 1) == '.'
+        && *(Cur + 2) == '.'
+        && (isBlankOrBreak(Cur + 3) || Cur + 3 == End))
+      return scanDocumentIndicator(false);
+
+    if (*Cur == '[')
+      return scanFlowCollectionStart(true);
+
+    if (*Cur == '{')
+      return scanFlowCollectionStart(false);
+
+    if (*Cur == ']')
+      return scanFlowCollectionEnd(true);
+
+    if (*Cur == '}')
+      return scanFlowCollectionEnd(false);
+
+    if (*Cur == '-' && isBlankOrBreak(Cur + 1))
+      return scanBlockEntry();
+
+    if (*Cur == ':' && (FlowLevel || isBlankOrBreak(Cur + 1)))
+      return scanValue();
+
+    return false;
   }
 
 public:
@@ -423,7 +561,13 @@ public:
   }
 
   Token getNext() {
-
+    if (TokenQueue.empty())
+      if (!fetchMoreTokens())
+        report_fatal_error("Failed to get next token!");
+    assert(!TokenQueue.empty() && "fetchMoreTokens lied about getting tokens!");
+    Token ret = TokenQueue.front();
+    TokenQueue.pop();
+    return ret;
   }
 
   void debugPrintRest() {
@@ -450,6 +594,26 @@ int main(int argc, char **argv) {
       outs() << sn->getRawValue() << "\n";
     stream.debugPrintRest();
   }*/
+
+  yaml::Scanner s("%YAML 1.2 # adena\n-\n", &sm);
+
+  while (true) {
+    yaml::Token t = s.getNext();
+    switch (t.Kind) {
+    case yaml::Token::TK_StreamStart:
+      outs() << "Stream-Start(" << t.StreamStart.BOM << "): ";
+      break;
+    case yaml::Token::TK_StreamEnd:
+      outs() << "Stream-End: ";
+      break;
+    case yaml::Token::TK_VersionDirective:
+      outs() << "Version-Directive(" << t.VersionDirective.Value << "): ";
+    }
+    outs() << t.Range << "\n";
+    if (t.Kind == yaml::Token::TK_StreamEnd)
+      break;
+    outs().flush();
+  }
 
   return 0;
 }
