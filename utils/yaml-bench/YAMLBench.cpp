@@ -22,11 +22,13 @@
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/ErrorHandling.h"
 #include "llvm/Support/MemoryBuffer.h"
+#include "llvm/Support/system_error.h"
 #include "llvm/Support/Timer.h"
 #include "llvm/Support/raw_ostream.h"
 #include "llvm/Support/SourceMgr.h"
 
-#include <queue>
+#include <algorithm>
+#include <deque>
 #include <utility>
 
 namespace llvm {
@@ -95,6 +97,10 @@ struct VersionDirectiveInfo {
   StringRef Value;
 };
 
+struct ScalarInfo {
+  StringRef Value;
+};
+
 struct Token {
   enum TokenKind {
     TK_Null, // Uninitialized token.
@@ -107,7 +113,6 @@ struct Token {
     TK_BlockEntry,
     TK_BlockEnd,
     TK_BlockSequenceStart,
-    TK_BlockSequenceEnd,
     TK_BlockMappingStart,
     TK_FlowEntry,
     TK_FlowSequenceStart,
@@ -115,7 +120,8 @@ struct Token {
     TK_FlowMappingStart,
     TK_FlowMappingEnd,
     TK_Key,
-    TK_Value
+    TK_Value,
+    TK_Scalar
   } Kind;
 
   StringRef Range;
@@ -124,8 +130,24 @@ struct Token {
     StreamStartInfo StreamStart;
   };
   VersionDirectiveInfo VersionDirective;
+  ScalarInfo Scalar;
 
   Token() : Kind(TK_Null) {}
+};
+
+struct SimpleKey {
+  const Token *Tok;
+  unsigned Column;
+  unsigned Line;
+  bool IsRequired;
+
+  bool operator <(const SimpleKey &Other) {
+    return Tok <  Other.Tok;
+  }
+
+  bool operator ==(const SimpleKey &Other) {
+    return Tok == Other.Tok;
+  }
 };
 
 class Scanner {
@@ -139,8 +161,12 @@ class Scanner {
   unsigned FlowLevel;
   unsigned BlockLevel;
   bool IsStartOfStream;
-  std::queue<Token> TokenQueue;
+  bool IsSimpleKeyAllowed;
+  bool IsSimpleKeyRequired;
+  std::deque<Token> TokenQueue;
   SmallVector<int, 4> Indents;
+  SmallVector<SimpleKey, 4> SimpleKeys;
+
 
   StringRef currentInput() {
     return StringRef(Cur, End - Cur);
@@ -381,18 +407,34 @@ class Scanner {
     return false;
   }
 
+  void removeStaleSimpleKeys() {
+    for (SmallVectorImpl<SimpleKey>::iterator i = SimpleKeys.begin();
+                                              i != SimpleKeys.end();) {
+      if (i->Line != Line || i->Column + 1024 < Column) {
+        if (i->IsRequired)
+          report_fatal_error("Could not find expected : for simple key");
+        i = SimpleKeys.erase(i);
+      } else
+        ++i;
+    }
+  }
+
   bool scanStreamStart() {
     IsStartOfStream = false;
+
     BOMInfo BI = getBOM(currentInput());
     Cur += BI.second;
+
     Token t;
     t.Kind = Token::TK_StreamStart;
     t.StreamStart.BOM = BI.first;
-    TokenQueue.push(t);
+    TokenQueue.push_back(t);
     return true;
   }
 
   bool scanStreamEnd() {
+    unrollIndent(-1);
+
     // Force an ending new line if one isn't present.
     if (Column != 0) {
       Column = 0;
@@ -402,7 +444,7 @@ class Scanner {
     Token t;
     t.Kind = Token::TK_StreamEnd;
     t.Range = StringRef(Cur, 0);
-    TokenQueue.push(t);
+    TokenQueue.push_back(t);
     return true;
   }
 
@@ -414,10 +456,25 @@ class Scanner {
 
     while (Indent > Col) {
       t.Kind = Token::TK_BlockEnd;
-      TokenQueue.push(t);
+      TokenQueue.push_back(t);
       Indent = Indents.pop_back_val();
     }
 
+    return true;
+  }
+
+  bool rollIndent(int Col, Token::TokenKind Kind) {
+    if (FlowLevel)
+      return true;
+    if (Indent < Col) {
+      Indents.push_back(Indent);
+      Indent = Col;
+
+      Token t;
+      t.Kind = Kind;
+      t.Range = StringRef(Cur, 0);
+      TokenQueue.push_back(t);
+    }
     return true;
   }
 
@@ -440,7 +497,7 @@ class Scanner {
       t.Kind = Token::TK_VersionDirective;
       t.Range = StringRef(Start, Cur - Start);
       t.VersionDirective.Value = Version;
-      TokenQueue.push(t);
+      TokenQueue.push_back(t);
       return true;
     }
     return false;
@@ -452,7 +509,7 @@ class Scanner {
     t.Kind = IsStart ? Token::TK_DocumentStart : Token::TK_DocumentEnd;
     t.Range = StringRef(Cur, 3);
     skip(3);
-    TokenQueue.push(t);
+    TokenQueue.push_back(t);
     return true;
   }
 
@@ -462,7 +519,7 @@ class Scanner {
                         : Token::TK_FlowMappingStart;
     t.Range = StringRef(Cur, 1);
     skip(1);
-    TokenQueue.push(t);
+    TokenQueue.push_back(t);
     ++FlowLevel;
     return true;
   }
@@ -473,27 +530,117 @@ class Scanner {
                         : Token::TK_FlowMappingEnd;
     t.Range = StringRef(Cur, 1);
     skip(1);
-    TokenQueue.push(t);
+    TokenQueue.push_back(t);
     if (FlowLevel)
       --FlowLevel;
     return true;
   }
 
+  bool scanFlowEntry() {
+    Token t;
+    t.Kind = Token::TK_FlowEntry;
+    t.Range = StringRef(Cur, 1);
+    skip(1);
+    TokenQueue.push_back(t);
+    return true;
+  }
+
   bool scanBlockEntry() {
+    rollIndent(Column, Token::TK_BlockSequenceStart);
     Token t;
     t.Kind = Token::TK_BlockEntry;
     t.Range = StringRef(Cur, 1);
     skip(1);
-    TokenQueue.push(t);
+    TokenQueue.push_back(t);
+    return true;
+  }
+
+  bool scanKey() {
+    Token t;
+    t.Kind = Token::TK_Key;
+    t.Range = StringRef(Cur, 1);
+    skip(1);
+    TokenQueue.push_back(t);
     return true;
   }
 
   bool scanValue() {
+    // If the previous token could have been a simple key, insert the key token
+    // into the token queue.
+    if (!SimpleKeys.empty()) {
+      SimpleKey SK = SimpleKeys.pop_back_val();
+      Token t;
+      t.Kind = Token::TK_Key;
+      t.Range = SK.Tok->Range;
+      std::deque<Token>::iterator i, e;
+      for (i = TokenQueue.begin(), e = TokenQueue.end(); i != e; ++i) {
+        if (&(*i) == SK.Tok)
+          break;
+      }
+      assert(i != e && "SimpleKey not in token queue!");
+      TokenQueue.insert(i, t);
+    }
+
     Token t;
     t.Kind = Token::TK_Value;
     t.Range = StringRef(Cur, 1);
     skip(1);
-    TokenQueue.push(t);
+    TokenQueue.push_back(t);
+    return true;
+  }
+
+  bool scanFlowScalar(bool IsDoubleQuoted) {
+    StringRef::iterator Start = Cur;
+    skip(1); // eat quote.
+    while (*Cur != (IsDoubleQuoted ? '"' : '\'')) {
+      StringRef::iterator i = skip_nb_char(Cur);
+      if (i == Cur)
+        break;
+      Cur = i;
+      ++Column;
+    }
+    StringRef Value(Start + 1, Cur - (Start + 1));
+    skip(1); // Skip ending quote.
+    Token t;
+    t.Kind = Token::TK_Scalar;
+    t.Range = StringRef(Start, Cur - Start);
+    t.Scalar.Value = Value;
+    TokenQueue.push_back(t);
+    return true;
+  }
+
+  bool scanPlainScalar() {
+    StringRef::iterator Start = Cur;
+    unsigned ColStart = Column;
+    while (true) {
+      if ((*Cur == ':' && isBlankOrBreak(Cur + 1))
+          || (FlowLevel
+              && StringRef(Cur, 1).find_first_of(",:?[]{}")
+                 != StringRef::npos))
+        break;
+      StringRef::iterator i = skip_nb_char(Cur);
+      if (i == Cur)
+        break;
+      Cur = i;
+    }
+    Token t;
+    t.Kind = Token::TK_Scalar;
+    t.Range = StringRef(Start, Cur - Start);
+    t.Scalar.Value = t.Range;
+    TokenQueue.push_back(t);
+
+    // Plain scalars can be simple keys.
+    if (IsSimpleKeyAllowed) {
+      SimpleKey SK;
+      SK.Tok = &TokenQueue.front();
+      SK.Line = Line;
+      SK.Column = ColStart;
+      SK.IsRequired = false;
+      SimpleKeys.push_back(SK);
+    }
+
+    IsSimpleKeyAllowed = false;
+
     return true;
   }
 
@@ -505,6 +652,8 @@ class Scanner {
 
     if (Cur == End)
       return scanStreamEnd();
+
+    removeStaleSimpleKeys();
 
     unrollIndent(Column);
 
@@ -537,11 +686,32 @@ class Scanner {
     if (*Cur == '}')
       return scanFlowCollectionEnd(false);
 
+    if (*Cur == ',')
+      return scanFlowEntry();
+
     if (*Cur == '-' && isBlankOrBreak(Cur + 1))
       return scanBlockEntry();
 
+    if (*Cur == '?' && (FlowLevel || isBlankOrBreak(Cur + 1)))
+      return scanKey();
+
     if (*Cur == ':' && (FlowLevel || isBlankOrBreak(Cur + 1)))
       return scanValue();
+
+    if (*Cur == '\'')
+      return scanFlowScalar(false);
+
+    if (*Cur == '"')
+      return scanFlowScalar(true);
+
+    // Get a plain scalar.
+    StringRef FirstChar(Cur, 1);
+    if (!(isBlankOrBreak(Cur)
+          || FirstChar.find_first_of("-?:,[]{}#&*!|>'\"%@`") != StringRef::npos)
+        || (*Cur == '-' && !isBlankOrBreak(Cur + 1))
+        || (!FlowLevel && (*Cur == '?' || *Cur == ':')
+            && isBlankOrBreak(Cur + 1)))
+      return scanPlainScalar();
 
     return false;
   }
@@ -554,19 +724,36 @@ public:
     , Line(0)
     , FlowLevel(0)
     , BlockLevel(0)
-    , IsStartOfStream(true) {
+    , IsStartOfStream(true)
+    , IsSimpleKeyAllowed(true)
+    , IsSimpleKeyRequired(false) {
     InputBuffer.reset(MemoryBuffer::getMemBuffer(input, "YAML"));
     Cur = InputBuffer->getBufferStart();
     End = InputBuffer->getBufferEnd();
   }
 
   Token getNext() {
-    if (TokenQueue.empty())
-      if (!fetchMoreTokens())
-        report_fatal_error("Failed to get next token!");
-    assert(!TokenQueue.empty() && "fetchMoreTokens lied about getting tokens!");
+    // If the current token is a possible simple key, keep parsing until we
+    // can confirm.
+    bool NeedMore = false;
+    while (true) {
+      if (TokenQueue.empty() || NeedMore)
+        if (!fetchMoreTokens())
+          report_fatal_error("Failed to get next token!");
+      assert(!TokenQueue.empty() &&
+             "fetchMoreTokens lied about getting tokens!");
+
+      removeStaleSimpleKeys();
+      SimpleKey SK;
+      SK.Tok = &TokenQueue.front();
+      if (std::find(SimpleKeys.begin(), SimpleKeys.end(), SK)
+          == SimpleKeys.end())
+        break;
+      else
+        NeedMore = true;
+    }
     Token ret = TokenQueue.front();
-    TokenQueue.pop();
+    TokenQueue.pop_front();
     return ret;
   }
 
@@ -581,7 +768,7 @@ public:
 using namespace llvm;
 
 int main(int argc, char **argv) {
-  llvm::cl::ParseCommandLineOptions(argc, argv);
+  // llvm::cl::ParseCommandLineOptions(argc, argv);
   llvm::SourceMgr sm;
 
   // How do I want to use yaml...
@@ -595,7 +782,15 @@ int main(int argc, char **argv) {
     stream.debugPrintRest();
   }*/
 
-  yaml::Scanner s("%YAML 1.2 # adena\n-\n", &sm);
+  if (argc < 2) {
+    errs() << "Not enough args.\n";
+    return 1;
+  }
+
+  OwningPtr<MemoryBuffer> Buf;
+  error_code ec = MemoryBuffer::getFileOrSTDIN(argv[1], Buf);
+
+  yaml::Scanner s(Buf->getBuffer(), &sm);
 
   while (true) {
     yaml::Token t = s.getNext();
@@ -608,6 +803,52 @@ int main(int argc, char **argv) {
       break;
     case yaml::Token::TK_VersionDirective:
       outs() << "Version-Directive(" << t.VersionDirective.Value << "): ";
+      break;
+    case yaml::Token::TK_TagDirective:
+      outs() << "Tag-Directive: ";
+      break;
+    case yaml::Token::TK_DocumentStart:
+      outs() << "Document-Start: ";
+      break;
+    case yaml::Token::TK_DocumentEnd:
+      outs() << "Document-End: ";
+      break;
+    case yaml::Token::TK_BlockEntry:
+      outs() << "Block-Entry: ";
+      break;
+    case yaml::Token::TK_BlockEnd:
+      outs() << "Block-End: ";
+      break;
+    case yaml::Token::TK_BlockSequenceStart:
+      outs() << "Block-Sequence-Start: ";
+      break;
+    case yaml::Token::TK_BlockMappingStart:
+      outs() << "Block-Mapping-Start: ";
+      break;
+    case yaml::Token::TK_FlowEntry:
+      outs() << "Flow-Entry: ";
+      break;
+    case yaml::Token::TK_FlowSequenceStart:
+      outs() << "Flow-Sequence-Start: ";
+      break;
+    case yaml::Token::TK_FlowSequenceEnd:
+      outs() << "Flow-Sequence-End: ";
+      break;
+    case yaml::Token::TK_FlowMappingStart:
+      outs() << "Flow-Mapping-Start: ";
+      break;
+    case yaml::Token::TK_FlowMappingEnd:
+      outs() << "Flow-Mapping-End: ";
+      break;
+    case yaml::Token::TK_Key:
+      outs() << "Key: ";
+      break;
+    case yaml::Token::TK_Value:
+      outs() << "Value: ";
+      break;
+    case yaml::Token::TK_Scalar:
+      outs() << "Scalar(" << t.Scalar.Value << "): ";
+      break;
     }
     outs() << t.Range << "\n";
     if (t.Kind == yaml::Token::TK_StreamEnd)
