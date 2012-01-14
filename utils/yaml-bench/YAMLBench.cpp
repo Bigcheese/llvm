@@ -785,7 +785,7 @@ public:
     End = InputBuffer->getBufferEnd();
   }
 
-  Token peekNext() {
+  Token &peekNext() {
     // If the current token is a possible simple key, keep parsing until we
     // can confirm.
     bool NeedMore = false;
@@ -978,7 +978,7 @@ public:
 };
 
 class Document {
-  friend Node;
+  friend class Node;
 
   Stream &S;
   BumpPtrAllocator NodeAllocator;
@@ -1203,6 +1203,8 @@ int main(int argc, char **argv) {
     case yaml::Token::TK_Scalar:
       outs() << "Scalar(" << t.Scalar.Value << "): ";
       break;
+    case yaml::Token::TK_Null:
+      report_fatal_error("Uninitalized token!");
     }
     outs() << t.Range << "\n";
     if (t.Kind == yaml::Token::TK_StreamEnd)
