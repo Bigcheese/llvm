@@ -139,6 +139,7 @@ struct SimpleKey {
   const Token *Tok;
   unsigned Column;
   unsigned Line;
+  unsigned FlowLevel;
   bool IsRequired;
 
   bool operator <(const SimpleKey &Other) {
@@ -396,6 +397,9 @@ class Scanner {
       Cur = i;
       ++Line;
       Column = 0;
+      // New lines may start a simple key.
+      if (!FlowLevel)
+        IsSimpleKeyAllowed = true;
     }
   }
 
@@ -419,6 +423,11 @@ class Scanner {
     }
   }
 
+  void removeSimpleKeyOnFlowLevel(unsigned Level) {
+    if (!SimpleKeys.empty() && (SimpleKeys.end() - 1)->FlowLevel == Level)
+      SimpleKeys.pop_back();
+  }
+
   bool scanStreamStart() {
     IsStartOfStream = false;
 
@@ -433,13 +442,15 @@ class Scanner {
   }
 
   bool scanStreamEnd() {
-    unrollIndent(-1);
-
     // Force an ending new line if one isn't present.
     if (Column != 0) {
       Column = 0;
       ++Line;
     }
+
+    unrollIndent(-1);
+    SimpleKeys.clear();
+    IsSimpleKeyAllowed = false;
 
     Token t;
     t.Kind = Token::TK_StreamEnd;
@@ -463,7 +474,9 @@ class Scanner {
     return true;
   }
 
-  bool rollIndent(int Col, Token::TokenKind Kind) {
+  bool rollIndent( int Col
+                 , Token::TokenKind Kind
+                 , std::deque<Token>::iterator InsertPoint) {
     if (FlowLevel)
       return true;
     if (Indent < Col) {
@@ -473,7 +486,7 @@ class Scanner {
       Token t;
       t.Kind = Kind;
       t.Range = StringRef(Cur, 0);
-      TokenQueue.push_back(t);
+      TokenQueue.insert(InsertPoint, t);
     }
     return true;
   }
@@ -481,6 +494,8 @@ class Scanner {
   bool scanDirective() {
     // Reset the indentation level.
     unrollIndent(-1);
+    SimpleKeys.clear();
+    IsSimpleKeyAllowed = false;
 
     StringRef::iterator Start = Cur;
     consume('%');
@@ -505,6 +520,9 @@ class Scanner {
 
   bool scanDocumentIndicator(bool IsStart) {
     unrollIndent(-1);
+    SimpleKeys.clear();
+    IsSimpleKeyAllowed = false;
+
     Token t;
     t.Kind = IsStart ? Token::TK_DocumentStart : Token::TK_DocumentEnd;
     t.Range = StringRef(Cur, 3);
@@ -514,6 +532,7 @@ class Scanner {
   }
 
   bool scanFlowCollectionStart(bool IsSequence) {
+    IsSimpleKeyAllowed = true;
     Token t;
     t.Kind = IsSequence ? Token::TK_FlowSequenceStart
                         : Token::TK_FlowMappingStart;
@@ -525,6 +544,8 @@ class Scanner {
   }
 
   bool scanFlowCollectionEnd(bool IsSequence) {
+    removeSimpleKeyOnFlowLevel(FlowLevel);
+    IsSimpleKeyAllowed = false;
     Token t;
     t.Kind = IsSequence ? Token::TK_FlowSequenceEnd
                         : Token::TK_FlowMappingEnd;
@@ -537,6 +558,8 @@ class Scanner {
   }
 
   bool scanFlowEntry() {
+    removeSimpleKeyOnFlowLevel(FlowLevel);
+    IsSimpleKeyAllowed = true;
     Token t;
     t.Kind = Token::TK_FlowEntry;
     t.Range = StringRef(Cur, 1);
@@ -546,7 +569,9 @@ class Scanner {
   }
 
   bool scanBlockEntry() {
-    rollIndent(Column, Token::TK_BlockSequenceStart);
+    rollIndent(Column, Token::TK_BlockSequenceStart, TokenQueue.end());
+    removeSimpleKeyOnFlowLevel(FlowLevel);
+    IsSimpleKeyAllowed = true;
     Token t;
     t.Kind = Token::TK_BlockEntry;
     t.Range = StringRef(Cur, 1);
@@ -556,6 +581,12 @@ class Scanner {
   }
 
   bool scanKey() {
+    if (!FlowLevel)
+      rollIndent(Column, Token::TK_BlockMappingStart, TokenQueue.end());
+
+    removeSimpleKeyOnFlowLevel(FlowLevel);
+    IsSimpleKeyAllowed = !FlowLevel;
+
     Token t;
     t.Kind = Token::TK_Key;
     t.Range = StringRef(Cur, 1);
@@ -578,7 +609,16 @@ class Scanner {
           break;
       }
       assert(i != e && "SimpleKey not in token queue!");
-      TokenQueue.insert(i, t);
+      i = TokenQueue.insert(i, t);
+
+      // We may also to add a Block-Mapping-Start token.
+      rollIndent(SK.Column, Token::TK_BlockMappingStart, i);
+
+      IsSimpleKeyAllowed = false;
+    } else {
+      if (!FlowLevel)
+        rollIndent(Column, Token::TK_BlockMappingStart, TokenQueue.end());
+      IsSimpleKeyAllowed = !FlowLevel;
     }
 
     Token t;
@@ -591,6 +631,7 @@ class Scanner {
 
   bool scanFlowScalar(bool IsDoubleQuoted) {
     StringRef::iterator Start = Cur;
+    unsigned ColStart = Column;
     skip(1); // eat quote.
     while (*Cur != (IsDoubleQuoted ? '"' : '\'')) {
       StringRef::iterator i = skip_nb_char(Cur);
@@ -606,6 +647,18 @@ class Scanner {
     t.Range = StringRef(Start, Cur - Start);
     t.Scalar.Value = Value;
     TokenQueue.push_back(t);
+
+    if (IsSimpleKeyAllowed) {
+      SimpleKey SK;
+      SK.Tok = &TokenQueue.front();
+      SK.Line = Line;
+      SK.Column = ColStart;
+      SK.IsRequired = false;
+      SimpleKeys.push_back(SK);
+    }
+
+    IsSimpleKeyAllowed = false;
+
     return true;
   }
 
@@ -732,7 +785,7 @@ public:
     End = InputBuffer->getBufferEnd();
   }
 
-  Token getNext() {
+  Token peekNext() {
     // If the current token is a possible simple key, keep parsing until we
     // can confirm.
     bool NeedMore = false;
@@ -752,41 +805,342 @@ public:
       else
         NeedMore = true;
     }
-    Token ret = TokenQueue.front();
+    return TokenQueue.front();
+  }
+
+  Token getNext() {
+    Token ret = peekNext();
     TokenQueue.pop_front();
     return ret;
   }
+};
 
-  void debugPrintRest() {
-    outs() << currentInput() << "\n";
+class document_iterator;
+class Document;
+
+class Stream {
+  Scanner S;
+  SourceMgr &SM;
+  OwningPtr<Document> CurrentDoc;
+
+  friend class Document;
+
+  void handleYAMLDirective(const Token &t) {
+
+  }
+
+public:
+  Stream(StringRef input, SourceMgr *sm) : S(input, sm), SM(*sm) {}
+
+  document_iterator begin();
+  document_iterator end();
+};
+
+class Node {
+  unsigned int TypeID;
+
+protected:
+  Document *Doc;
+
+public:
+  enum NodeKind {
+    NK_Null,
+    NK_Scalar,
+    NK_KeyValue,
+    NK_Mapping,
+    NK_Sequence
+  };
+
+  Node(unsigned int Type, Document *D) : TypeID(Type), Doc(D) {}
+
+  unsigned int getType() const { return TypeID; }
+  static inline bool classof(const Node *) { return true; }
+
+  Token &peekNext();
+  Token getNext();
+  Node *parseBlockNode();
+
+  virtual void skip() {}
+};
+
+class ScalarNode : public Node {
+  StringRef Value;
+
+public:
+  ScalarNode(Document *D, StringRef Val) : Node(NK_Scalar, D), Value(Val) {}
+
+  // Return Value without any escaping or folding or other fun YAML stuff. This
+  // is the exact bytes that are contained in the file (after converstion to
+  // utf8).
+  StringRef getRawValue() const { return Value; }
+
+  static inline bool classof(const ScalarNode *) { return true; }
+  static inline bool classof(const Node *n) {
+    return n->getType() == NK_Scalar;
   }
 };
+
+class KeyValueNode : public Node {
+public:
+  KeyValueNode(Document *D) : Node(NK_KeyValue, D) {}
+
+  static inline bool classof(const KeyValueNode *) { return true; }
+  static inline bool classof(const Node *n) {
+    return n->getType() == NK_KeyValue;
+  }
+};
+
+class MappingNode : public Node {
+  Node *Key;
+
+public:
+  MappingNode(Document *D, Node *K) : Node(NK_Mapping, D), Key(K) {}
+
+  static inline bool classof(const MappingNode *) { return true; }
+  static inline bool classof(const Node *n) {
+    return n->getType() == NK_Mapping;
+  }
+};
+
+class SequenceNode : public Node {
+  enum {
+    ST_Block,
+    ST_Flow
+  } SequenceType;
+
+public:
+  class iterator {
+    SequenceNode *SN;
+    Node *CurrentEntry;
+
+  public:
+    iterator() : SN(0), CurrentEntry(0) {}
+    iterator(SequenceNode *sn) : SN(sn), CurrentEntry(0) {}
+
+    Node *operator ->() const {
+      assert(CurrentEntry && "Attempted to access end iterator!");
+      return CurrentEntry;
+    }
+
+    Node &operator *() const {
+      assert(CurrentEntry && "Attempted to dereference end iterator!");
+      return *CurrentEntry;
+    }
+
+    operator Node*() const {
+      assert(CurrentEntry && "Attempted to access end iterator!");
+      return CurrentEntry;
+    }
+
+    bool operator !=(const iterator &Other) const {
+      return SN != Other.SN;
+    }
+
+    iterator &operator++() {
+      assert(SN && "Attempted to advance iterator past end!");
+      if (CurrentEntry)
+        CurrentEntry->skip();
+      Token t = SN->peekNext();
+      switch (t.Kind) {
+      case Token::TK_BlockEntry:
+        SN->getNext();
+        CurrentEntry = SN->parseBlockNode();
+        break;
+      case Token::TK_BlockEnd:
+        SN->getNext();
+        SN = 0;
+        CurrentEntry = 0;
+        break;
+      default:
+        report_fatal_error("Unexptected token!");
+      }
+      return *this;
+    }
+  };
+
+  SequenceNode(Document *D, bool IsBlock)
+    : Node(NK_Sequence, D)
+    , SequenceType(IsBlock ? ST_Block : ST_Flow)
+  {}
+
+  static inline bool classof(const SequenceNode *) { return true; }
+  static inline bool classof(const Node *n) {
+    return n->getType() == NK_Sequence;
+  }
+
+  iterator begin() {
+    iterator ret(this);
+    ++ret;
+    return ret;
+  }
+
+  iterator end() { return iterator(); }
+};
+
+class Document {
+  friend Node;
+
+  Stream &S;
+  BumpPtrAllocator NodeAllocator;
+
+  Token &peekNext() {
+    return S.S.peekNext();
+  }
+
+  Token getNext() {
+    return S.S.getNext();
+  }
+
+  void handleTagDirective(const Token &t) {
+
+  }
+
+  bool parseDirectives() {
+    bool dir = false;
+    while (true) {
+      Token t = peekNext();
+      if (t.Kind == Token::TK_TagDirective) {
+        handleTagDirective(getNext());
+        dir = true;
+      } else if (t.Kind == Token::TK_VersionDirective) {
+        S.handleYAMLDirective(getNext());
+        dir = true;
+      } else
+        break;
+    }
+    return dir;
+  }
+
+  bool expectToken(Token::TokenKind TK) {
+    Token t = getNext();
+    if (t.Kind != TK)
+      report_fatal_error("Unexpected token!");
+    return true;
+  }
+
+public:
+  Node *parseBlockNode() {
+    Token t = getNext();
+    switch (t.Kind) {
+    case Token::TK_BlockSequenceStart:
+      return new (NodeAllocator.Allocate<SequenceNode>(1))
+        SequenceNode(this, true);
+    case Token::TK_BlockMappingStart:
+      break;
+    case Token::TK_FlowSequenceStart:
+      return new (NodeAllocator.Allocate<SequenceNode>(1))
+        SequenceNode(this, false);
+    case Token::TK_FlowMappingStart:
+      break;
+    case Token::TK_Scalar:
+      return new (NodeAllocator.Allocate<ScalarNode>(1))
+        ScalarNode(this, t.Scalar.Value);
+    default:
+      report_fatal_error("Unexpected token!");
+    }
+    assert(false && "Control flow shouldn't reach here.");
+    return 0;
+  }
+
+  Document(Stream &s) : S(s) {
+    if (parseDirectives())
+      expectToken(Token::TK_DocumentStart);
+  }
+
+  bool skip() {
+    return false;
+  }
+
+  Node *getRoot() {
+    return parseBlockNode();
+  }
+};
+
+class document_iterator {
+  Document *Doc;
+
+public:
+  document_iterator() : Doc(0) {}
+  document_iterator(Document *d) : Doc(d) {}
+
+  bool operator !=(const document_iterator &other) {
+    return Doc != other.Doc;
+  }
+
+  document_iterator operator ++() {
+    if (!Doc->skip())
+      Doc = 0;
+    return *this;
+  }
+
+  Document *operator ->() {
+    return Doc;
+  }
+};
+
+document_iterator Stream::begin() {
+  if (CurrentDoc)
+    report_fatal_error("Can only iterate over the stream once");
+
+  // Skip Stream-Start.
+  S.getNext();
+
+  CurrentDoc.reset(new Document(*this));
+  return document_iterator(CurrentDoc.get());
+}
+
+document_iterator Stream::end() {
+  return document_iterator();
+}
+
+Token &Node::peekNext() {
+  return Doc->peekNext();
+}
+
+Token Node::getNext() {
+  return Doc->getNext();
+}
+
+Node *Node::parseBlockNode() {
+  return Doc->parseBlockNode();
+}
 
 } // end namespace yaml.
 } // end namespace llvm.
 
 using namespace llvm;
 
+struct indent {
+  unsigned distance;
+  indent(unsigned d) : distance(d) {}
+};
+
+raw_ostream &operator <<(raw_ostream &os, const indent &in) {
+  for (unsigned i = 0; i < in.distance; ++i)
+    os << "  ";
+  return os;
+}
+
+void dumpNode(yaml::Node *n, unsigned Indent = 0) {
+  if (yaml::ScalarNode *sn = dyn_cast<yaml::ScalarNode>(n))
+    outs() << indent(Indent) << "!!str \"" << sn->getRawValue() << "\"\n";
+  else if (yaml::SequenceNode *sn = dyn_cast<yaml::SequenceNode>(n)) {
+    outs() << indent(Indent) << "!!seq [\n";
+    ++Indent;
+    for (yaml::SequenceNode::iterator i = sn->begin(), e = sn->end();
+                                      i != e; ++i) {
+      dumpNode(i, Indent);
+    }
+    --Indent;
+    outs() << indent(Indent) << "]\n";
+  }
+}
+
 int main(int argc, char **argv) {
   // llvm::cl::ParseCommandLineOptions(argc, argv);
   llvm::SourceMgr sm;
 
   // How do I want to use yaml...
-  /*yaml::Stream stream("hello", &sm);
-  for (yaml::document_iterator di = stream.begin(), de = stream.end(); di != de;
-       ++di) {
-    outs() << "Hey, I got a document!\n";
-    yaml::Node *n = di->getRoot();
-    if (yaml::ScalarNode *sn = dyn_cast<yaml::ScalarNode>(n))
-      outs() << sn->getRawValue() << "\n";
-    stream.debugPrintRest();
-  }*/
-
-  if (argc < 2) {
-    errs() << "Not enough args.\n";
-    return 1;
-  }
-
   OwningPtr<MemoryBuffer> Buf;
   error_code ec = MemoryBuffer::getFileOrSTDIN(argv[1], Buf);
 
@@ -854,6 +1208,20 @@ int main(int argc, char **argv) {
     if (t.Kind == yaml::Token::TK_StreamEnd)
       break;
     outs().flush();
+  }
+
+  yaml::Stream stream(Buf->getBuffer(), &sm);
+  for (yaml::document_iterator di = stream.begin(), de = stream.end(); di != de;
+       ++di) {
+    outs() << "%YAML 1.2\n"
+           << "---\n";
+    dumpNode(di->getRoot());
+    outs() << "...\n";
+  }
+
+  if (argc < 2) {
+    errs() << "Not enough args.\n";
+    return 1;
   }
 
   return 0;
