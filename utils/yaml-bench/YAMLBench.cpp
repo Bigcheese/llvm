@@ -859,8 +859,19 @@ public:
   Token &peekNext();
   Token getNext();
   Node *parseBlockNode();
+  BumpPtrAllocator &getAllocator();
 
   virtual void skip() {}
+};
+
+class NullNode : public Node {
+public:
+  NullNode(Document *D) : Node(NK_Null, D) {}
+
+  static inline bool classof(const NullNode *) { return true; }
+  static inline bool classof(const Node *n) {
+    return n->getType() == NK_Null;
+  }
 };
 
 class ScalarNode : public Node {
@@ -881,32 +892,156 @@ public:
 };
 
 class KeyValueNode : public Node {
+  Node *Key;
+  Node *Value;
+
 public:
-  KeyValueNode(Document *D) : Node(NK_KeyValue, D) {}
+  KeyValueNode(Document *D)
+    : Node(NK_KeyValue, D)
+    , Key(0)
+    , Value(0) {}
 
   static inline bool classof(const KeyValueNode *) { return true; }
   static inline bool classof(const Node *n) {
     return n->getType() == NK_KeyValue;
   }
+
+  Node *getKey() {
+    if (Key)
+      return Key;
+    // Handle implicit null keys.
+    {
+      Token &t = peekNext();
+      if (t.Kind == Token::TK_BlockEnd || t.Kind == Token::TK_Value) {
+        return Key = new (getAllocator().Allocate<NullNode>()) NullNode(Doc);
+      }
+      assert(t.Kind == Token::TK_Key && "Got invalid mapping token sequence!");
+      getNext(); // skip TK_Key.
+    }
+
+    // Handle explicit null keys.
+    Token &t = peekNext();
+    if (t.Kind == Token::TK_BlockEnd || t.Kind == Token::TK_Value) {
+      return Key = new (getAllocator().Allocate<NullNode>()) NullNode(Doc);
+    }
+
+    // We've got a normal key.
+    return Key = parseBlockNode();
+  }
+
+  Node *getValue() {
+    if (Value)
+      return Value;
+    getKey()->skip();
+
+    // Handle implicit null values.
+    {
+      Token &t = peekNext();
+      if (t.Kind == Token::TK_BlockEnd || t.Kind == Token::TK_Key) {
+        return Value = new (getAllocator().Allocate<NullNode>()) NullNode(Doc);
+      }
+
+      assert(t.Kind == Token::TK_Value &&
+        "Got invalid mapping token sequence!");
+      getNext(); // skip TK_Value.
+    }
+
+    // Handle explicit null values.
+    Token &t = peekNext();
+    if (t.Kind == Token::TK_BlockEnd || t.Kind == Token::TK_Key) {
+      return Value = new (getAllocator().Allocate<NullNode>()) NullNode(Doc);
+    }
+
+    // We got a normal value.
+    return Value = parseBlockNode();
+  }
+
+  virtual void skip() {
+    getKey()->skip();
+    getValue()->skip();
+  }
 };
 
 class MappingNode : public Node {
-  Node *Key;
+  bool IsBlock;
+  bool IsAtBeginning;
 
 public:
-  MappingNode(Document *D, Node *K) : Node(NK_Mapping, D), Key(K) {}
+  MappingNode(Document *D, bool isBlock)
+    : Node(NK_Mapping, D)
+    , IsBlock(isBlock)
+    , IsAtBeginning(true)
+  {}
 
   static inline bool classof(const MappingNode *) { return true; }
   static inline bool classof(const Node *n) {
     return n->getType() == NK_Mapping;
   }
+
+  class iterator {
+    MappingNode *MN;
+    KeyValueNode *CurrentEntry;
+
+  public:
+    iterator() : MN(0), CurrentEntry(0) {}
+    iterator(MappingNode *mn) : MN(mn), CurrentEntry(0) {}
+
+    KeyValueNode *operator ->() const {
+      assert(CurrentEntry && "Attempted to access end iterator!");
+      return CurrentEntry;
+    }
+
+    KeyValueNode &operator *() const {
+      assert(CurrentEntry && "Attempted to dereference end iterator!");
+      return *CurrentEntry;
+    }
+
+    operator KeyValueNode*() const {
+      assert(CurrentEntry && "Attempted to access end iterator!");
+      return CurrentEntry;
+    }
+
+    bool operator !=(const iterator &Other) const {
+      return MN != Other.MN;
+    }
+
+    iterator &operator++() {
+      assert(MN && "Attempted to advance iterator past end!");
+      if (CurrentEntry)
+        CurrentEntry->skip();
+      Token t = MN->peekNext();
+      switch (t.Kind) {
+      case Token::TK_Key:
+        // KeyValueNode eats the TK_Key. That way it can detect null keys.
+        CurrentEntry = new (MN->getAllocator().Allocate<KeyValueNode>())
+          KeyValueNode(MN->Doc);
+        break;
+      case Token::TK_BlockEnd:
+        MN->getNext();
+        MN = 0;
+        CurrentEntry = 0;
+        break;
+      default:
+        report_fatal_error("Unexptected token!");
+      }
+      return *this;
+    }
+  };
+
+  iterator begin() {
+    assert(IsAtBeginning && "You may only iterate over a collection once!");
+    IsAtBeginning = false;
+    iterator ret(this);
+    ++ret;
+    return ret;
+  }
+
+  iterator end() { return iterator(); }
 };
 
 class SequenceNode : public Node {
-  enum {
-    ST_Block,
-    ST_Flow
-  } SequenceType;
+  bool IsBlock;
+  bool IsAtBeginning;
 
 public:
   class iterator {
@@ -958,9 +1093,10 @@ public:
     }
   };
 
-  SequenceNode(Document *D, bool IsBlock)
+  SequenceNode(Document *D, bool isBlock)
     : Node(NK_Sequence, D)
-    , SequenceType(IsBlock ? ST_Block : ST_Flow)
+    , IsBlock(isBlock)
+    , IsAtBeginning(true)
   {}
 
   static inline bool classof(const SequenceNode *) { return true; }
@@ -969,6 +1105,8 @@ public:
   }
 
   iterator begin() {
+    assert(IsAtBeginning && "You may only iterate over a collection once!");
+    IsAtBeginning = false;
     iterator ret(this);
     ++ret;
     return ret;
@@ -1026,6 +1164,8 @@ public:
       return new (NodeAllocator.Allocate<SequenceNode>(1))
         SequenceNode(this, true);
     case Token::TK_BlockMappingStart:
+      return new (NodeAllocator.Allocate<MappingNode>())
+        MappingNode(this, true);
       break;
     case Token::TK_FlowSequenceStart:
       return new (NodeAllocator.Allocate<SequenceNode>(1))
@@ -1105,6 +1245,10 @@ Node *Node::parseBlockNode() {
   return Doc->parseBlockNode();
 }
 
+BumpPtrAllocator &Node::getAllocator() {
+  return Doc->NodeAllocator;
+}
+
 } // end namespace yaml.
 } // end namespace llvm.
 
@@ -1133,6 +1277,19 @@ void dumpNode(yaml::Node *n, unsigned Indent = 0) {
     }
     --Indent;
     outs() << indent(Indent) << "]\n";
+  } else if (yaml::MappingNode *mn = dyn_cast<yaml::MappingNode>(n)) {
+    outs() << indent(Indent) << "!!map {\n";
+    ++Indent;
+    for (yaml::MappingNode::iterator i = mn->begin(), e = mn->end();
+                                     i != e; ++i) {
+      outs() << indent(Indent) << "? ";
+      dumpNode(i->getKey(), Indent);
+      outs() << indent(Indent) << ": ";
+      dumpNode(i->getValue(), Indent);
+      outs() << indent(Indent) << ",\n";
+    }
+    --Indent;
+    outs() << indent(Indent) << "}\n";
   }
 }
 
