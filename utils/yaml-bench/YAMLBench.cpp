@@ -1117,6 +1117,7 @@ public:
 
 class Document {
   friend class Node;
+  friend class document_iterator;
 
   Stream &S;
   BumpPtrAllocator NodeAllocator;
@@ -1185,10 +1186,20 @@ public:
   Document(Stream &s) : S(s) {
     if (parseDirectives())
       expectToken(Token::TK_DocumentStart);
+    Token &t = peekNext();
+    if (t.Kind == Token::TK_DocumentStart)
+      getNext();
   }
 
   bool skip() {
-    return false;
+    Token &t = peekNext();
+    if (t.Kind == Token::TK_StreamEnd)
+      return false;
+    if (t.Kind == Token::TK_DocumentEnd) {
+      getNext();
+      return skip();
+    }
+    return true;
   }
 
   Node *getRoot() {
@@ -1210,6 +1221,10 @@ public:
   document_iterator operator ++() {
     if (!Doc->skip())
       Doc = 0;
+    else {
+      Doc->~Document();
+      new (Doc) Document(Doc->S);
+    }
     return *this;
   }
 
