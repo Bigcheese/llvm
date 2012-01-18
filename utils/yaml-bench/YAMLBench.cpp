@@ -1265,31 +1265,45 @@ raw_ostream &operator <<(raw_ostream &os, const indent &in) {
   return os;
 }
 
-void dumpNode(yaml::Node *n, unsigned Indent = 0) {
-  if (yaml::ScalarNode *sn = dyn_cast<yaml::ScalarNode>(n))
-    outs() << indent(Indent) << "!!str \"" << sn->getRawValue() << "\"\n";
-  else if (yaml::SequenceNode *sn = dyn_cast<yaml::SequenceNode>(n)) {
-    outs() << indent(Indent) << "!!seq [\n";
+void dumpNode( yaml::Node *n
+             , unsigned Indent = 0
+             , bool SuppressFirstIndent = false) {
+  if (yaml::ScalarNode *sn = dyn_cast<yaml::ScalarNode>(n)) {
+    if (!SuppressFirstIndent)
+      outs() << indent(Indent);
+    outs() << "!!str \"" << sn->getRawValue() << "\"";
+  } else if (yaml::SequenceNode *sn = dyn_cast<yaml::SequenceNode>(n)) {
+    if (!SuppressFirstIndent)
+      outs() << indent(Indent);
+    outs() << "!!seq [\n";
     ++Indent;
     for (yaml::SequenceNode::iterator i = sn->begin(), e = sn->end();
                                       i != e; ++i) {
       dumpNode(i, Indent);
+      outs() << ",\n";
     }
     --Indent;
-    outs() << indent(Indent) << "]\n";
+    outs() << indent(Indent) << "]";
   } else if (yaml::MappingNode *mn = dyn_cast<yaml::MappingNode>(n)) {
-    outs() << indent(Indent) << "!!map {\n";
+    if (!SuppressFirstIndent)
+      outs() << indent(Indent);
+    outs() << "!!map {\n";
     ++Indent;
     for (yaml::MappingNode::iterator i = mn->begin(), e = mn->end();
                                      i != e; ++i) {
       outs() << indent(Indent) << "? ";
-      dumpNode(i->getKey(), Indent);
+      dumpNode(i->getKey(), Indent, true);
+      outs() << "\n";
       outs() << indent(Indent) << ": ";
-      dumpNode(i->getValue(), Indent);
-      outs() << indent(Indent) << ",\n";
+      dumpNode(i->getValue(), Indent, true);
+      outs() << ",\n";
     }
     --Indent;
-    outs() << indent(Indent) << "}\n";
+    outs() << indent(Indent) << "}";
+  } else if (dyn_cast<yaml::NullNode>(n)) {
+    if (!SuppressFirstIndent)
+      outs() << indent(Indent);
+    outs() << "!!null null";
   }
 }
 
@@ -1375,7 +1389,7 @@ int main(int argc, char **argv) {
     outs() << "%YAML 1.2\n"
            << "---\n";
     dumpNode(di->getRoot());
-    outs() << "...\n";
+    outs() << "\n...\n";
   }
 
   if (argc < 2) {
