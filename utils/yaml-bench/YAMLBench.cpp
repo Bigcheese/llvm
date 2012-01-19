@@ -153,7 +153,7 @@ struct SimpleKey {
 
 class Scanner {
   SourceMgr *SM;
-  OwningPtr<MemoryBuffer> InputBuffer;
+  MemoryBuffer *InputBuffer;
   StringRef::iterator Cur;
   StringRef::iterator End;
   int Indent; //< Current YAML indentation level in spaces.
@@ -164,10 +164,10 @@ class Scanner {
   bool IsStartOfStream;
   bool IsSimpleKeyAllowed;
   bool IsSimpleKeyRequired;
+  bool Failed;
   std::deque<Token> TokenQueue;
   SmallVector<int, 4> Indents;
   SmallVector<SimpleKey, 4> SimpleKeys;
-
 
   StringRef currentInput() {
     return StringRef(Cur, End - Cur);
@@ -247,7 +247,7 @@ class Scanner {
     }
 
     // Not valid utf-8.
-    report_fatal_error("Invalid utf-8!");
+    setError("Invalid utf8 code unit", Pos);
     return std::make_pair(0, 0);
   }
 
@@ -416,7 +416,7 @@ class Scanner {
                                               i != SimpleKeys.end();) {
       if (i->Line != Line || i->Column + 1024 < Column) {
         if (i->IsRequired)
-          report_fatal_error("Could not find expected : for simple key");
+          setError("Could not find expected : for simple key");
         i = SimpleKeys.erase(i);
       } else
         ++i;
@@ -766,6 +766,7 @@ class Scanner {
             && isBlankOrBreak(Cur + 1)))
       return scanPlainScalar();
 
+    setError("Unrecognized token");
     return false;
   }
 
@@ -779,8 +780,10 @@ public:
     , BlockLevel(0)
     , IsStartOfStream(true)
     , IsSimpleKeyAllowed(true)
-    , IsSimpleKeyRequired(false) {
-    InputBuffer.reset(MemoryBuffer::getMemBuffer(input, "YAML"));
+    , IsSimpleKeyRequired(false)
+    , Failed(false) {
+    InputBuffer = MemoryBuffer::getMemBuffer(input, "YAML");
+    SM->AddNewSourceBuffer(InputBuffer, SMLoc());
     Cur = InputBuffer->getBufferStart();
     End = InputBuffer->getBufferEnd();
   }
@@ -813,6 +816,25 @@ public:
     TokenQueue.pop_front();
     return ret;
   }
+
+  void printError(SMLoc Loc, SourceMgr::DiagKind Kind, const Twine &Msg,
+                  ArrayRef<SMRange> Ranges = ArrayRef<SMRange>()) {
+    SM->PrintMessage(Loc, Kind, Msg, Ranges);
+  }
+
+  void setError(const Twine &Msg) {
+    printError(SMLoc::getFromPointer(Cur), SourceMgr::DK_Error, Msg);
+    Failed = true;
+  }
+
+  void setError(const Twine &Msg, StringRef::iterator Pos) {
+    printError(SMLoc::getFromPointer(Pos), SourceMgr::DK_Error, Msg);
+    Failed = true;
+  }
+
+  bool failed() {
+    return Failed;
+  }
 };
 
 class document_iterator;
@@ -820,7 +842,6 @@ class Document;
 
 class Stream {
   Scanner S;
-  SourceMgr &SM;
   OwningPtr<Document> CurrentDoc;
 
   friend class Document;
@@ -830,7 +851,7 @@ class Stream {
   }
 
 public:
-  Stream(StringRef input, SourceMgr *sm) : S(input, sm), SM(*sm) {}
+  Stream(StringRef input, SourceMgr *sm) : S(input, sm) {}
 
   document_iterator begin();
   document_iterator end();
@@ -860,6 +881,7 @@ public:
   Token getNext();
   Node *parseBlockNode();
   BumpPtrAllocator &getAllocator();
+  void setError(const Twine &Msg, Token &Tok);
 
   virtual void skip() {}
 };
@@ -1022,7 +1044,7 @@ public:
         CurrentEntry = 0;
         break;
       default:
-        report_fatal_error("Unexptected token!");
+        MN->setError("Unexpected token", t);
       }
       return *this;
     }
@@ -1130,6 +1152,10 @@ class Document {
     return S.S.getNext();
   }
 
+  void setError(const Twine &Msg, Token &Tok) {
+    S.S.setError(Msg, Tok.Range.begin());
+  }
+
   void handleTagDirective(const Token &t) {
 
   }
@@ -1152,8 +1178,10 @@ class Document {
 
   bool expectToken(Token::TokenKind TK) {
     Token t = getNext();
-    if (t.Kind != TK)
-      report_fatal_error("Unexpected token!");
+    if (t.Kind != TK) {
+      setError("Unexpected token", t);
+      return false;
+    }
     return true;
   }
 
@@ -1162,22 +1190,25 @@ public:
     Token t = getNext();
     switch (t.Kind) {
     case Token::TK_BlockSequenceStart:
-      return new (NodeAllocator.Allocate<SequenceNode>(1))
+      return new (NodeAllocator.Allocate<SequenceNode>())
         SequenceNode(this, true);
     case Token::TK_BlockMappingStart:
       return new (NodeAllocator.Allocate<MappingNode>())
         MappingNode(this, true);
       break;
     case Token::TK_FlowSequenceStart:
-      return new (NodeAllocator.Allocate<SequenceNode>(1))
+      return new (NodeAllocator.Allocate<SequenceNode>())
         SequenceNode(this, false);
+#if 0
     case Token::TK_FlowMappingStart:
       break;
+#endif
     case Token::TK_Scalar:
-      return new (NodeAllocator.Allocate<ScalarNode>(1))
+      return new (NodeAllocator.Allocate<ScalarNode>())
         ScalarNode(this, t.Scalar.Value);
     default:
-      report_fatal_error("Unexpected token!");
+      setError("Unexpected token", t);
+      return 0;
     }
     assert(false && "Control flow shouldn't reach here.");
     return 0;
@@ -1264,6 +1295,10 @@ BumpPtrAllocator &Node::getAllocator() {
   return Doc->NodeAllocator;
 }
 
+void Node::setError(const Twine &Msg, Token &Tok) {
+  Doc->setError(Msg, Tok);
+}
+
 } // end namespace yaml.
 } // end namespace llvm.
 
@@ -1324,12 +1359,13 @@ void dumpNode( yaml::Node *n
 
 int main(int argc, char **argv) {
   // llvm::cl::ParseCommandLineOptions(argc, argv);
-  llvm::SourceMgr sm;
 
   // How do I want to use yaml...
   OwningPtr<MemoryBuffer> Buf;
-  error_code ec = MemoryBuffer::getFileOrSTDIN(argv[1], Buf);
+  if (MemoryBuffer::getFileOrSTDIN(argv[1], Buf))
+    return 1;
 
+  llvm::SourceMgr sm;
   yaml::Scanner s(Buf->getBuffer(), &sm);
 
   while (true) {
@@ -1403,7 +1439,11 @@ int main(int argc, char **argv) {
        ++di) {
     outs() << "%YAML 1.2\n"
            << "---\n";
-    dumpNode(di->getRoot());
+    yaml::Node *n = di->getRoot();
+    if (n)
+      dumpNode(n);
+    else
+      break;
     outs() << "\n...\n";
   }
 
