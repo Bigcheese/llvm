@@ -103,7 +103,7 @@ struct ScalarInfo {
 
 struct Token {
   enum TokenKind {
-    TK_Null, // Uninitialized token.
+    TK_Error, // Uninitialized token.
     TK_StreamStart,
     TK_StreamEnd,
     TK_VersionDirective,
@@ -132,7 +132,7 @@ struct Token {
   VersionDirectiveInfo VersionDirective;
   ScalarInfo Scalar;
 
-  Token() : Kind(TK_Null) {}
+  Token() : Kind(TK_Error) {}
 };
 
 struct SimpleKey {
@@ -793,9 +793,13 @@ public:
     // can confirm.
     bool NeedMore = false;
     while (true) {
-      if (TokenQueue.empty() || NeedMore)
-        if (!fetchMoreTokens())
-          report_fatal_error("Failed to get next token!");
+      if (TokenQueue.empty() || NeedMore) {
+        if (!fetchMoreTokens()) {
+          TokenQueue.clear();
+          TokenQueue.push_back(Token());
+          return TokenQueue.front();
+        }
+      }
       assert(!TokenQueue.empty() &&
              "fetchMoreTokens lied about getting tokens!");
 
@@ -813,7 +817,9 @@ public:
 
   Token getNext() {
     Token ret = peekNext();
-    TokenQueue.pop_front();
+    // TokenQueue can be empty if there was an error getting the next token.
+    if (!TokenQueue.empty())
+      TokenQueue.pop_front();
     return ret;
   }
 
@@ -934,7 +940,9 @@ public:
     // Handle implicit null keys.
     {
       Token &t = peekNext();
-      if (t.Kind == Token::TK_BlockEnd || t.Kind == Token::TK_Value) {
+      if (   t.Kind == Token::TK_BlockEnd
+          || t.Kind == Token::TK_Value
+          || t.Kind == Token::TK_Error) {
         return Key = new (getAllocator().Allocate<NullNode>()) NullNode(Doc);
       }
       assert(t.Kind == Token::TK_Key && "Got invalid mapping token sequence!");
@@ -959,7 +967,9 @@ public:
     // Handle implicit null values.
     {
       Token &t = peekNext();
-      if (t.Kind == Token::TK_BlockEnd || t.Kind == Token::TK_Key) {
+      if (   t.Kind == Token::TK_BlockEnd
+          || t.Kind == Token::TK_Key
+          || t.Kind == Token::TK_Error) {
         return Value = new (getAllocator().Allocate<NullNode>()) NullNode(Doc);
       }
 
@@ -1045,6 +1055,9 @@ public:
         break;
       default:
         MN->setError("Unexpected token", t);
+      case Token::TK_Error:
+        MN = 0;
+        CurrentEntry = 0;
       }
       return *this;
     }
@@ -1102,6 +1115,10 @@ public:
       case Token::TK_BlockEntry:
         SN->getNext();
         CurrentEntry = SN->parseBlockNode();
+        if (CurrentEntry == 0) { // An error occured.
+          SN = 0;
+          CurrentEntry = 0;
+        }
         break;
       case Token::TK_BlockEnd:
         SN->getNext();
@@ -1109,7 +1126,10 @@ public:
         CurrentEntry = 0;
         break;
       default:
-        report_fatal_error("Unexptected token!");
+        SN->setError("Unexpected token!", t);
+      case Token::TK_Error:
+        SN = 0;
+        CurrentEntry = 0;
       }
       return *this;
     }
@@ -1206,6 +1226,8 @@ public:
     case Token::TK_Scalar:
       return new (NodeAllocator.Allocate<ScalarNode>())
         ScalarNode(this, t.Scalar.Value);
+    case Token::TK_Error:
+      return 0;
     default:
       setError("Unexpected token", t);
       return 0;
@@ -1318,6 +1340,8 @@ raw_ostream &operator <<(raw_ostream &os, const indent &in) {
 void dumpNode( yaml::Node *n
              , unsigned Indent = 0
              , bool SuppressFirstIndent = false) {
+  if (!n)
+    return;
   if (yaml::ScalarNode *sn = dyn_cast<yaml::ScalarNode>(n)) {
     if (!SuppressFirstIndent)
       outs() << indent(Indent);
@@ -1425,11 +1449,11 @@ int main(int argc, char **argv) {
     case yaml::Token::TK_Scalar:
       outs() << "Scalar(" << t.Scalar.Value << "): ";
       break;
-    case yaml::Token::TK_Null:
-      report_fatal_error("Uninitalized token!");
+    case yaml::Token::TK_Error:
+      break;
     }
     outs() << t.Range << "\n";
-    if (t.Kind == yaml::Token::TK_StreamEnd)
+    if (t.Kind == yaml::Token::TK_StreamEnd || t.Kind == yaml::Token::TK_Error)
       break;
     outs().flush();
   }
