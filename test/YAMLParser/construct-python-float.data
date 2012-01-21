@@ -1,1 +1,3 @@
+# RUN: yaml-bench %s
+
 !!python/float 123.456

@@ -1,3 +1,5 @@
+# RUN: yaml-bench %s
+
 ! "First document"
 ---
 !foo "No directives"

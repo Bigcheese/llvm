@@ -1,1 +1,3 @@
+# RUN: yaml-bench %s
+
 --- !!python/str "Это уникодная строка"

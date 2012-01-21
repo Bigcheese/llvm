@@ -1,3 +1,5 @@
+# RUN: killthedoctor yaml-bench %s
+
 ---
 *The first line.
 The last line.

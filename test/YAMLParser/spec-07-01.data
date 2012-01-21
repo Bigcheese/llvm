@@ -1,3 +1,5 @@
+# RUN: yaml-bench %s
+
 %FOO  bar baz # Should be ignored
                # with a warning.
 --- "foo"

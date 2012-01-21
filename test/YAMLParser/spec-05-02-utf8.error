@@ -1,3 +1,5 @@
+# RUN: killthedoctor yaml-bench %s
+
 ERROR:
  A BOM must not appear
  inside a document.

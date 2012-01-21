@@ -1,3 +1,5 @@
+# RUN: yaml-bench %s
+
 ---
 not-date: !!str 2002-04-28
 

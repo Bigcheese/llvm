@@ -1,3 +1,5 @@
+# RUN: yaml-bench %s
+
 canonical: 685230
 decimal: +685_230
 octal: 02472256

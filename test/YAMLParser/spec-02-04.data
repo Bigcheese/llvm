@@ -1,3 +1,5 @@
+# RUN: yaml-bench %s
+
 -
   name: Mark McGwire
   hr:   65

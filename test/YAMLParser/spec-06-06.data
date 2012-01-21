@@ -1,3 +1,5 @@
+# RUN: yaml-bench %s
+
 plain: text
   lines
 quoted: "text

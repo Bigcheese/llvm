@@ -1,2 +1,4 @@
+# RUN: yaml-bench %s
+
 !<tag:yaml.org,2002:str> foo :
   !<!bar> baz

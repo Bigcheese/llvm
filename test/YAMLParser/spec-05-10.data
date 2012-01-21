@@ -1,2 +1,4 @@
+# RUN: yaml-bench %s
+
 commercial-at: @text
 grave-accent: `text

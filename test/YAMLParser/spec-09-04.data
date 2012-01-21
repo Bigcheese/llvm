@@ -1,3 +1,5 @@
+# RUN: yaml-bench %s
+
  "first
  	inner 1	
  \ inner 2 \

@@ -1,3 +1,5 @@
+# RUN: killthedoctor yaml-bench %s
+
 ERROR:
 The TAG directive must only
 be given at most once per

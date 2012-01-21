@@ -1,3 +1,5 @@
+# RUN: killthedoctor yaml-bench %s
+
 [
     { "link with": [ "library1.dll", "library2.dll" ] },
     {

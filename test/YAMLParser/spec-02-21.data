@@ -1,3 +1,5 @@
+# RUN: yaml-bench %s
+
 null: ~
 true: y
 false: n

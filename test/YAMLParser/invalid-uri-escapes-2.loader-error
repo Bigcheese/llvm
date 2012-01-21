@@ -1,1 +1,3 @@
+# RUN: killthedoctor yaml-bench %s
+
 --- !<%FF> foo

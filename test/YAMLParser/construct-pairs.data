@@ -1,3 +1,5 @@
+# RUN: yaml-bench %s
+
 # Explicitly typed pairs.
 Block tasks: !!pairs
   - meeting: with team.

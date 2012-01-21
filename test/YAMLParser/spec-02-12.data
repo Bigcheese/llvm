@@ -1,3 +1,5 @@
+# RUN: yaml-bench %s
+
 ---
 # products purchased
 - item    : Super Hoop

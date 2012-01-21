@@ -1,3 +1,5 @@
+# RUN: yaml-bench %s
+
 %TAG !o! tag:ben-kiki.org,2000:
 ---
 - !local foo

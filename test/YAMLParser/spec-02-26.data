@@ -1,3 +1,5 @@
+# RUN: yaml-bench %s
+
 # ordered maps are represented as
 # a sequence of mappings, with
 # each mapping having one key

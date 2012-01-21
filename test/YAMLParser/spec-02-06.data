@@ -1,3 +1,5 @@
+# RUN: yaml-bench %s
+
 Mark McGwire: {hr: 65, avg: 0.278}
 Sammy Sosa: {
     hr: 63,

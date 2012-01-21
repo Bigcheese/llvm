@@ -1,3 +1,5 @@
+# RUN: killthedoctor yaml-bench %s
+
 {
     "canonical": datetime.datetime(2001, 12, 15, 2, 59, 43, 100000),
     "valid iso8601": datetime.datetime(2001, 12, 15, 2, 59, 43, 100000),

@@ -1,3 +1,5 @@
+# RUN: killthedoctor yaml-bench %s
+
 test:
     - [ foo: bar
 # comment the rest of the stream to let the scanner detect the problem.

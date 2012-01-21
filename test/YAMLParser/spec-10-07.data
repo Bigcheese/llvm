@@ -1,3 +1,5 @@
+# RUN: yaml-bench %s
+
 {
 ? : value, # Empty key
 ? explicit

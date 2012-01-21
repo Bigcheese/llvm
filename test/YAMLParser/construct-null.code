@@ -1,3 +1,5 @@
+# RUN: killthedoctor yaml-bench %s
+
 [
     None,
     { "empty": None, "canonical": None, "english": None, None: "null key" },

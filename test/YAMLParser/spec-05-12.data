@@ -1,3 +1,5 @@
+# RUN: yaml-bench %s
+
 # Tabs do's and don'ts:
 # comment: 	
 quoted: "Quoted		"

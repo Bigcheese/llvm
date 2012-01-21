@@ -1,2 +1,4 @@
+# RUN: killthedoctor yaml-bench %s
+
 foo: bar
 <<: [x: 1, y: 2, z, t: 4]

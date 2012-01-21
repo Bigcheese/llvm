@@ -1,3 +1,5 @@
+# RUN: killthedoctor yaml-bench %s
+
 {
     "Bestiary": [
         ("aardvark", "African pig-like ant eater. Ugly."),

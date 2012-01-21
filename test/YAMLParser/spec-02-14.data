@@ -1,3 +1,5 @@
+# RUN: yaml-bench %s
+
 ---
   Mark McGwire's
   year was crippled

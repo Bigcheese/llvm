@@ -1,3 +1,5 @@
+# RUN: killthedoctor yaml-bench %s
+
 ERROR:
 - The !$a! looks like a handle.
 - The !o! handle has no suffix.

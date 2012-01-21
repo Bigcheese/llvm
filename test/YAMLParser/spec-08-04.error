@@ -1,3 +1,5 @@
+# RUN: killthedoctor yaml-bench %s
+
 ERROR:
 - Verbatim tags aren't resolved,
   so ! is invalid.

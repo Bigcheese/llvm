@@ -1,3 +1,5 @@
+# RUN: killthedoctor yaml-bench %s
+
 {
 #    0.0: 0,
     1.0: 1,

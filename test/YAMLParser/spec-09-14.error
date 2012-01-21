@@ -1,3 +1,5 @@
+# RUN: killthedoctor yaml-bench %s
+
 ERROR:
  The --- and ... document
  start and end markers must

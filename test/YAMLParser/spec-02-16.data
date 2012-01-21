@@ -1,3 +1,5 @@
+# RUN: yaml-bench %s
+
 name: Mark McGwire
 accomplishment: >
   Mark set a major league

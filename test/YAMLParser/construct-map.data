@@ -1,3 +1,5 @@
+# RUN: yaml-bench %s
+
 # Unordered set of key: value pairs.
 Block style: !!map
   Clark : Evans

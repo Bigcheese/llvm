@@ -1,3 +1,5 @@
+# RUN: yaml-bench %s
+
 %TAG ! tag:clarkevans.com,2002:
 --- !shape
   # Use the ! handle for presenting

@@ -1,3 +1,5 @@
+# RUN: yaml-bench %s
+
 # Explicitly typed ordered map (dictionary).
 Bestiary: !!omap
   - aardvark: African pig-like ant eater. Ugly.

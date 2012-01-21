@@ -1,3 +1,5 @@
+# RUN: yaml-bench %s
+
 %TAG !      !foo
 %TAG !yaml! tag:yaml.org,2002:
 ---

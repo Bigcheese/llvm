@@ -467,6 +467,7 @@ class Scanner {
 
     while (Indent > Col) {
       t.Kind = Token::TK_BlockEnd;
+      t.Range = StringRef(Cur, 1);
       TokenQueue.push_back(t);
       Indent = Indents.pop_back_val();
     }
@@ -675,6 +676,10 @@ class Scanner {
       if (i == Cur)
         break;
       Cur = i;
+    }
+    if (Start == Cur) {
+      setError("Got empty plain scalar", Start);
+      return false;
     }
     Token t;
     t.Kind = Token::TK_Scalar;
@@ -1226,10 +1231,9 @@ public:
     case Token::TK_Scalar:
       return new (NodeAllocator.Allocate<ScalarNode>())
         ScalarNode(this, t.Scalar.Value);
-    case Token::TK_Error:
-      return 0;
     default:
       setError("Unexpected token", t);
+    case Token::TK_Error:
       return 0;
     }
     assert(false && "Control flow shouldn't reach here.");

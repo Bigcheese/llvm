@@ -1,3 +1,5 @@
+# RUN: yaml-bench %s
+
 # Ordered sequence of nodes
 Block style: !!seq
 - Mercury   # Rotates - no light/dark sides.

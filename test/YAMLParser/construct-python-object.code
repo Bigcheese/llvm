@@ -1,3 +1,5 @@
+# RUN: killthedoctor yaml-bench %s
+
 [
 AnObject(1, 'two', [3,3,3]),
 AnInstance(1, 'two', [3,3,3]),

@@ -1,1 +1,3 @@
+# RUN: killthedoctor yaml-bench %s
+
 --- !!python/name:sys.modules 5

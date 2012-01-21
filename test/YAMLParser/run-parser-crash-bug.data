@@ -1,3 +1,5 @@
+# RUN: yaml-bench %s
+
 ---
 - Harry Potter and the Prisoner of Azkaban
 - Harry Potter and the Goblet of Fire

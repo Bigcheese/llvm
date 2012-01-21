@@ -1,2 +1,4 @@
+# RUN: yaml-bench %s
+
 ﻿# A stream may contain
 # no documents.

@@ -1,3 +1,5 @@
+# RUN: yaml-bench %s
+
 - sun: yellow
 - ? earth: blue
   : moon: white

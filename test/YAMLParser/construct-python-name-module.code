@@ -1,1 +1,3 @@
+# RUN: killthedoctor yaml-bench %s
+
 [str, yaml.Loader, yaml.dump, abs, yaml.tokens]

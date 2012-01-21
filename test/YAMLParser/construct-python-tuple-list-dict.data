@@ -1,3 +1,5 @@
+# RUN: yaml-bench %s
+
 - !!python/list [1, 2, 3, 4]
 - !!python/tuple [1, 2, 3, 4]
 - !!python/dict {1: 2, 3: 4}

@@ -1,3 +1,5 @@
+# RUN: yaml-bench %s
+
 - | # Just the style
  literal
 - >1 # Indentation indicator

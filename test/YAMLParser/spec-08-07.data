@@ -1,3 +1,5 @@
+# RUN: yaml-bench %s
+
 # Assuming conventional resolution:
 - "12"
 - 12

@@ -1,3 +1,5 @@
+# RUN: killthedoctor yaml-bench %s
+
 [
     datetime.datetime(2001, 12, 15, 3, 29, 43, 100000),
     datetime.datetime(2001, 12, 14, 16, 29, 43, 100000),

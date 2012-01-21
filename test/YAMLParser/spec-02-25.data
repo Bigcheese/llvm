@@ -1,3 +1,5 @@
+# RUN: yaml-bench %s
+
 # sets are represented as a
 # mapping where each key is
 # associated with the empty string

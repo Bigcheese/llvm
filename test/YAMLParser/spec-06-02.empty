@@ -1,2 +1,4 @@
+# RUN: killthedoctor yaml-bench %s
+
 # This stream contains no
 # documents, only comments.

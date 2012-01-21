@@ -1,3 +1,5 @@
+# RUN: yaml-bench %s
+
 >
  Sammy Sosa completed another
  fine season with great stats.

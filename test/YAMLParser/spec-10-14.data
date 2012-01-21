@@ -1,3 +1,5 @@
+# RUN: yaml-bench %s
+
 plain key: # empty value
 "quoted key":
 - one # explicit next-line

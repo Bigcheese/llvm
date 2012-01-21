@@ -1,3 +1,5 @@
+# RUN: yaml-bench %s
+
 ---
 hr: # 1998 hr ranking
   - Mark McGwire

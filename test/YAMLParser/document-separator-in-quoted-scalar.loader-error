@@ -1,3 +1,5 @@
+# RUN: killthedoctor yaml-bench %s
+
 ---
 "this --- is correct"
 ---

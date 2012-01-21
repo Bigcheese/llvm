@@ -1,1 +1,3 @@
+# RUN: yaml-bench %s
+
 --- !!str "ascii string"

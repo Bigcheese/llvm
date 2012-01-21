@@ -1,3 +1,5 @@
+# RUN: yaml-bench %s
+
 # Ranking of 1998 home runs
 ---
 - Mark McGwire

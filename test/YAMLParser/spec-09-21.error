@@ -1,3 +1,5 @@
+# RUN: killthedoctor yaml-bench %s
+
 ERROR:
 - A leading all-space line must
   not have too many spaces.

@@ -1,3 +1,5 @@
+# RUN: yaml-bench %s
+
 ---
 in the block context:
     indentation should be kept: { 

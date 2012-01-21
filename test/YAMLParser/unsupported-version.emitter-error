@@ -1,3 +1,5 @@
+# RUN: killthedoctor yaml-bench %s
+
 - !StreamStart
 - !DocumentStart { version: [5,6] }
 - !Scalar { value: foo }

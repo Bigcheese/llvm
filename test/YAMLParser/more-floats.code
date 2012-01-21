@@ -1,1 +1,3 @@
+# RUN: killthedoctor yaml-bench %s
+
 [0.0, +1.0, -1.0, +1e300000, -1e300000, 1e300000/1e300000, -(1e300000/1e300000)] # last two items are ind and qnan respectively.

@@ -1,3 +1,5 @@
+# RUN: yaml-bench %s
+
 # Outside flow collection:
 - ::std::vector
 - Up, up, and away!

@@ -1,3 +1,5 @@
+# RUN: yaml-bench %s
+
 # Invalid use of BOM
 ﻿# inside a
 # document.

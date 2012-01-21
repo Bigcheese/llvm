@@ -1,3 +1,5 @@
+# RUN: killthedoctor yaml-bench %s
+
 {
     "canonical": 685230.15,
     "exponential": 685230.15,

@@ -1,3 +1,5 @@
+# RUN: yaml-bench %s
+
 - !!python/object:test_constructor.AnObject { foo: 1, bar: two, baz: [3,3,3] }
 - !!python/object:test_constructor.AnInstance { foo: 1, bar: two, baz: [3,3,3] }
 

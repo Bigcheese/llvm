@@ -1,2 +1,4 @@
+# RUN: killthedoctor yaml-bench %s
+
 %YAML   1e-5
 ---

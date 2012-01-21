@@ -1,3 +1,5 @@
+# RUN: yaml-bench %s
+
 - !!yaml '!'
 - !!yaml '&'
 - !!yaml '*'

@@ -1,2 +1,4 @@
+# RUN: yaml-bench %s
+
 %YAML 1.1
 --- text

@@ -1,3 +1,5 @@
+# RUN: yaml-bench %s
+
 # Tabs are confusing:
 # as space/trimmed/specific/none
  as space  trimmed  specific  none

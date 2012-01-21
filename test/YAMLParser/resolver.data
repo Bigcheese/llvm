@@ -1,3 +1,5 @@
+# RUN: yaml-bench %s
+
 ---
 "this scalar should be selected"
 ---

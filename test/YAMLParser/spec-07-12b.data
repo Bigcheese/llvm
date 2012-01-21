@@ -1,3 +1,5 @@
+# RUN: yaml-bench %s
+
 # Explicit document. Root
 # scalar (literal) node.
 --- |

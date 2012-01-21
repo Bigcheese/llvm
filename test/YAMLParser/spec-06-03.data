@@ -1,2 +1,4 @@
+# RUN: yaml-bench %s
+
 key:    # Comment
   value

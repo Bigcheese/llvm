@@ -1,3 +1,5 @@
+# RUN: yaml-bench %s
+
 "simple key" : {
   "also simple" : value,
   ? "not a

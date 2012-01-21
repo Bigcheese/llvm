@@ -1,3 +1,5 @@
+# RUN: killthedoctor yaml-bench %s
+
 --- !root/scalar
 "this scalar should be selected"
 --- !root

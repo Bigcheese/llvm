@@ -1,3 +1,5 @@
+# RUN: yaml-bench %s
+
 # Explicitly typed set.
 baseball players: !!set
   ? Mark McGwire

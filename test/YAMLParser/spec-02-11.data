@@ -1,3 +1,5 @@
+# RUN: yaml-bench %s
+
 ? - Detroit Tigers
   - Chicago cubs
 :

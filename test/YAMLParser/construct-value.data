@@ -1,3 +1,5 @@
+# RUN: yaml-bench %s
+
 ---     # Old schema
 link with:
   - library1.dll

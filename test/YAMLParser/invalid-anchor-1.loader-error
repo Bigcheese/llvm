@@ -1,1 +1,3 @@
+# RUN: killthedoctor yaml-bench %s
+
 --- &?  foo # we allow only ascii and numeric characters in anchor names.

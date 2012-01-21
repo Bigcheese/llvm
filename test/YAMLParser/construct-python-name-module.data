@@ -1,3 +1,5 @@
+# RUN: yaml-bench %s
+
 - !!python/name:str
 - !!python/name:yaml.Loader
 - !!python/name:yaml.dump

@@ -1,3 +1,5 @@
+# RUN: yaml-bench %s
+
 ---
 "---" : foo
 ...: bar

@@ -1,3 +1,5 @@
+# RUN: yaml-bench %s
+
 # Explicitly specify default settings:
 %TAG !     !
 %TAG !!    tag:yaml.org,2002:

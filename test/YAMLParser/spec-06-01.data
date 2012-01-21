@@ -1,3 +1,5 @@
+# RUN: yaml-bench %s
+
   # Leading comment line spaces are
    # neither content nor indentation.
     
