@@ -50,7 +50,7 @@ BOMInfo getBOM(StringRef input) {
   if (input.size() == 0)
     return std::make_pair(BT_Unknown, 0);
 
-  switch (input[0]) {
+  switch (uint8_t(input[0])) {
   case 0x00:
     if (input.size() >= 4) {
       if (input[1] == 0 && input[2] == 0xFE && input[3] == 0xFF)
@@ -185,65 +185,65 @@ class Scanner {
   typedef std::pair<uint32_t, unsigned> UTF8Decoded;
 
   UTF8Decoded decodeUTF8(StringRef::iterator Pos) {
-    if ((*Pos & 0x80) == 0)
+    if ((uint8_t(*Pos) & 0x80) == 0)
       return std::make_pair(*Pos, 1);
 
-    if (   (*Pos & 0xE0) == 0xC0
+    if (   (uint8_t(*Pos) & 0xE0) == 0xC0
         && Pos + 1 != End
-        && *Pos >= 0xC2
-        && *Pos <= 0xDF
-        && *(Pos + 1) >= 0x80
-        && *(Pos + 1) <= 0xBF) {
-      uint32_t codepoint = *(Pos + 1) & 0x3F;
-      codepoint |= uint16_t((*Pos) & 0x1F) << 6;
+        && uint8_t(*Pos) >= 0xC2
+        && uint8_t(*Pos) <= 0xDF
+        && uint8_t(*(Pos + 1)) >= 0x80
+        && uint8_t(*(Pos + 1)) <= 0xBF) {
+      uint32_t codepoint = uint8_t(*(Pos + 1)) & 0x3F;
+      codepoint |= uint16_t(uint8_t(*Pos) & 0x1F) << 6;
       return std::make_pair(codepoint, 2);
     }
 
-    if (   (*Pos & 0xF0) == 0xE0
+    if (   (uint8_t(*Pos) & 0xF0) == 0xE0
         && Pos + 2 < End) {
-      if (!(   *Pos == 0xE0
-            && *(Pos + 1) >= 0xA0
-            && *(Pos + 1) <= 0xBF));
-      else if (!(   *Pos >= 0xE1
-                 && *Pos <= 0xEC
-                 && *(Pos + 1) >= 0x80
-                 && *(Pos + 1) <= 0xBF));
-      else if (!(   *Pos == 0xED
-                 && *(Pos + 1) >= 0x80
-                 && *(Pos + 1) <= 0x9F));
-      else if (!(   *Pos >= 0xEE
-                 && *Pos <= 0xEF
-                 && *(Pos + 1) >= 0x80
-                 && *(Pos + 1) <= 0xBF));
+      if (   uint8_t(*Pos) == 0xE0
+         && (  uint8_t(*(Pos + 1)) < 0xA0
+            || uint8_t(*(Pos + 1)) > 0xBF));
+      else if (  uint8_t(*Pos) >= 0xE1
+              && uint8_t(*Pos) <= 0xEC
+              && (  uint8_t(*(Pos + 1)) < 0x80
+                 || uint8_t(*(Pos + 1)) > 0xBF));
+      else if (  uint8_t(*Pos) == 0xED
+              && (  uint8_t(*(Pos + 1)) < 0x80
+                 || uint8_t(*(Pos + 1)) > 0x9F));
+      else if (  uint8_t(*Pos) >= 0xEE
+              && uint8_t(*Pos) <= 0xEF
+              && (  uint8_t(*(Pos + 1)) < 0x80
+                 || uint8_t(*(Pos + 1)) > 0xBF));
       else {
-        if (*(Pos + 2) >= 0x80 && *(Pos + 2) <= 0xBF) {
-          uint32_t codepoint = *(Pos + 2) & 0x3F;
-          codepoint |= uint16_t(*(Pos + 1) & 0x3F) << 6;
-          codepoint |= uint16_t((*Pos) & 0x0F) << 12;
+        if (uint8_t(*(Pos + 2)) >= 0x80 && uint8_t(*(Pos + 2)) <= 0xBF) {
+          uint32_t codepoint = uint8_t(*(Pos + 2)) & 0x3F;
+          codepoint |= uint16_t(uint8_t(*(Pos + 1)) & 0x3F) << 6;
+          codepoint |= uint16_t(uint8_t(*Pos) & 0x0F) << 12;
           return std::make_pair(codepoint, 3);
         }
       }
     }
 
-    if (   (*Pos & 0xF8) == 0xF0
+    if (   (uint8_t(*Pos) & 0xF8) == 0xF0
         && Pos + 3 < End) {
-      if (!(   *Pos == 0xF0
-            && *(Pos + 1) >= 0x90
-            && *(Pos + 1) <= 0xBF));
-      else if (!(   *Pos >= 0xF1
-                 && *Pos <= 0xF3
-                 && *(Pos + 1) >= 0x80
-                 && *(Pos + 1) <= 0xBF));
-      else if (!(   *Pos == 0xF4
-                 && *(Pos + 1) >= 0x80
-                 && *(Pos + 1) <= 0x8F));
+      if (  uint8_t(*Pos) == 0xF0
+         && (  uint8_t(*(Pos + 1)) < 0x90
+            || uint8_t(*(Pos + 1)) > 0xBF));
+      else if (  uint8_t(*Pos) >= 0xF1
+              && uint8_t(*Pos) <= 0xF3
+              && (  uint8_t(*(Pos + 1)) < 0x80
+                 || uint8_t(*(Pos + 1)) > 0xBF));
+      else if (  uint8_t(*Pos) == 0xF4
+              && (  uint8_t(*(Pos + 1)) < 0x80
+                 || uint8_t(*(Pos + 1)) > 0x8F));
       else {
-        if (   *(Pos + 2) >= 0x80 && *(Pos + 2) <= 0xBF
-            && *(Pos + 3) >= 0x80 && *(Pos + 3) <= 0xBF) {
-          uint32_t codepoint = *(Pos + 3) & 0x3F;
-          codepoint |= uint32_t(*(Pos + 2) & 0x3F) << 6;
-          codepoint |= uint32_t(*(Pos + 1) & 0x3F) << 12;
-          codepoint |= uint32_t((*Pos) & 0x07) << 18;
+        if (   uint8_t(*(Pos + 2)) >= 0x80 && uint8_t(*(Pos + 2)) <= 0xBF
+            && uint8_t(*(Pos + 3)) >= 0x80 && uint8_t(*(Pos + 3)) <= 0xBF) {
+          uint32_t codepoint = uint8_t(*(Pos + 3)) & 0x3F;
+          codepoint |= uint32_t(uint8_t(*(Pos + 2)) & 0x3F) << 6;
+          codepoint |= uint32_t(uint8_t(*(Pos + 1)) & 0x3F) << 12;
+          codepoint |= uint32_t(uint8_t(*Pos) & 0x07) << 18;
           return std::make_pair(codepoint, 4);
         }
       }
@@ -262,7 +262,7 @@ class Scanner {
       return Pos + 1;
 
     // Check for valid utf-8.
-    if (*Pos & 0x80) {
+    if (uint8_t(*Pos) & 0x80) {
       UTF8Decoded u8d = decodeUTF8(Pos);
       if (   u8d.second != 0
           && u8d.first != 0xFEFF
@@ -358,9 +358,9 @@ class Scanner {
       report_fatal_error("Not dealing with this yet");
     if (Cur == End)
       return false;
-    if (*Cur >= 0x80)
+    if (uint8_t(*Cur) >= 0x80)
       report_fatal_error("Not dealing with this yet");
-    if (*Cur == expected) {
+    if (uint8_t(*Cur) == expected) {
       ++Cur;
       ++Column;
       return true;
@@ -752,6 +752,43 @@ class Scanner {
     return true;
   }
 
+  bool scanBlockScalar(bool IsLiteral) {
+    StringRef::iterator Start = Cur;
+    skip(1); // Eat | or >
+    while(true) {
+      StringRef::iterator i = skip_nb_char(Cur);
+      if (i == Cur) {
+        if (Column == 0)
+          break;
+        i = skip_b_char(Cur);
+        if (i != Cur) {
+          // We got a line break.
+          Column = 0;
+          ++Line;
+          Cur = i;
+          continue;
+        } else {
+          // There was an error, which should already have been printed out.
+          return false;
+        }
+      }
+      Cur = i;
+      ++Column;
+    }
+
+    if (Start == Cur) {
+      setError("Got empty block scalar", Start);
+      return false;
+    }
+
+    Token t;
+    t.Kind = Token::TK_Scalar;
+    t.Range = StringRef(Start, Cur - Start);
+    t.Scalar.Value = t.Range;
+    TokenQueue.push_back(t);
+    return true;
+  }
+
   bool fetchMoreTokens() {
     if (IsStartOfStream)
       return scanStreamStart();
@@ -811,6 +848,12 @@ class Scanner {
 
     if (*Cur == '&')
       return scanAliasOrAnchor(false);
+
+    if (*Cur == '|')
+      return scanBlockScalar(true);
+
+    if (*Cur == '>')
+      return scanBlockScalar(false);
 
     if (*Cur == '\'')
       return scanFlowScalar(false);
