@@ -721,18 +721,18 @@ class Scanner {
     if (Column == 0 && *Cur == '%')
       return scanDirective();
 
-    if (Column == 0 && Cur + 4 < End
+    if (Column == 0 && Cur + 4 <= End
         && *Cur == '-'
         && *(Cur + 1) == '-'
         && *(Cur + 2) == '-'
-        && (isBlankOrBreak(Cur + 3) || Cur + 3 == End))
+        && (Cur + 3 == End || isBlankOrBreak(Cur + 3)))
       return scanDocumentIndicator(true);
 
-    if (Column == 0 && Cur + 4 < End
+    if (Column == 0 && Cur + 4 <= End
         && *Cur == '.'
         && *(Cur + 1) == '.'
         && *(Cur + 2) == '.'
-        && (isBlankOrBreak(Cur + 3) || Cur + 3 == End))
+        && (Cur + 3 == End || isBlankOrBreak(Cur + 3)))
       return scanDocumentIndicator(false);
 
     if (*Cur == '[')
