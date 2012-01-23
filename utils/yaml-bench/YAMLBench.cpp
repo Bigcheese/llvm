@@ -416,7 +416,8 @@ class Scanner {
                                               i != SimpleKeys.end();) {
       if (i->Line != Line || i->Column + 1024 < Column) {
         if (i->IsRequired)
-          setError("Could not find expected : for simple key");
+          setError( "Could not find expected : for simple key"
+                  , i->Tok->Range.begin());
         i = SimpleKeys.erase(i);
       } else
         ++i;
@@ -651,10 +652,11 @@ class Scanner {
 
     if (IsSimpleKeyAllowed) {
       SimpleKey SK;
-      SK.Tok = &TokenQueue.front();
+      SK.Tok = &TokenQueue.back();
       SK.Line = Line;
       SK.Column = ColStart;
       SK.IsRequired = false;
+      SK.FlowLevel = FlowLevel;
       SimpleKeys.push_back(SK);
     }
 
@@ -690,10 +692,11 @@ class Scanner {
     // Plain scalars can be simple keys.
     if (IsSimpleKeyAllowed) {
       SimpleKey SK;
-      SK.Tok = &TokenQueue.front();
+      SK.Tok = &TokenQueue.back();
       SK.Line = Line;
       SK.Column = ColStart;
       SK.IsRequired = false;
+      SK.FlowLevel = FlowLevel;
       SimpleKeys.push_back(SK);
     }
 
@@ -771,7 +774,7 @@ class Scanner {
             && isBlankOrBreak(Cur + 1)))
       return scanPlainScalar();
 
-    setError("Unrecognized token");
+    setError("Unrecognized character while tokenizing.");
     return false;
   }
 
@@ -1064,7 +1067,7 @@ public:
         CurrentEntry = 0;
         break;
       default:
-        MN->setError("Unexpected token", t);
+        MN->setError("Unexpected token Expected Key or Block End", t);
       case Token::TK_Error:
         MN = 0;
         CurrentEntry = 0;
@@ -1121,25 +1124,46 @@ public:
       if (CurrentEntry)
         CurrentEntry->skip();
       Token t = SN->peekNext();
-      switch (t.Kind) {
-      case Token::TK_BlockEntry:
-        SN->getNext();
-        CurrentEntry = SN->parseBlockNode();
-        if (CurrentEntry == 0) { // An error occured.
+      if (SN->IsBlock) {
+        switch (t.Kind) {
+        case Token::TK_BlockEntry:
+          SN->getNext();
+          CurrentEntry = SN->parseBlockNode();
+          if (CurrentEntry == 0) { // An error occured.
+            SN = 0;
+            CurrentEntry = 0;
+          }
+          break;
+        case Token::TK_BlockEnd:
+          SN->getNext();
+          SN = 0;
+          CurrentEntry = 0;
+          break;
+        default:
+          SN->setError( "Unexpected token. Expected Block Entry or Block End."
+                      , t);
+        case Token::TK_Error:
           SN = 0;
           CurrentEntry = 0;
         }
-        break;
-      case Token::TK_BlockEnd:
-        SN->getNext();
-        SN = 0;
-        CurrentEntry = 0;
-        break;
-      default:
-        SN->setError("Unexpected token!", t);
-      case Token::TK_Error:
-        SN = 0;
-        CurrentEntry = 0;
+      } else {
+        switch (t.Kind) {
+        case Token::TK_FlowEntry:
+          // Eat the flow entry and recurse.
+          SN->getNext();
+          return ++(*this);
+        case Token::TK_FlowSequenceEnd:
+          SN->getNext();
+        case Token::TK_Error:
+          // Set this to end iterator.
+          SN = 0;
+          CurrentEntry = 0;
+          break;
+        default:
+          // Otherwise it must be a flow entry.
+          CurrentEntry = SN->parseBlockNode();
+          break;
+        }
       }
       return *this;
     }
@@ -1241,7 +1265,7 @@ public:
       return new (NodeAllocator.Allocate<ScalarNode>())
         ScalarNode(this, t.Scalar.Value);
     default:
-      setError("Unexpected token", t);
+      setError("Unexpected token. Expected Block Node.", t);
     case Token::TK_Error:
       return 0;
     }
