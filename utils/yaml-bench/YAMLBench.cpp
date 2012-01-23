@@ -121,7 +121,9 @@ struct Token {
     TK_FlowMappingEnd,
     TK_Key,
     TK_Value,
-    TK_Scalar
+    TK_Scalar,
+    TK_Alias,
+    TK_Anchor,
   } Kind;
 
   StringRef Range;
@@ -678,6 +680,7 @@ class Scanner {
       if (i == Cur)
         break;
       Cur = i;
+      ++Column;
     }
     if (Start == Cur) {
       setError("Got empty plain scalar", Start);
@@ -690,6 +693,49 @@ class Scanner {
     TokenQueue.push_back(t);
 
     // Plain scalars can be simple keys.
+    if (IsSimpleKeyAllowed) {
+      SimpleKey SK;
+      SK.Tok = &TokenQueue.back();
+      SK.Line = Line;
+      SK.Column = ColStart;
+      SK.IsRequired = false;
+      SK.FlowLevel = FlowLevel;
+      SimpleKeys.push_back(SK);
+    }
+
+    IsSimpleKeyAllowed = false;
+
+    return true;
+  }
+
+  bool scanAliasOrAnchor(bool IsAlias) {
+    StringRef::iterator Start = Cur;
+    unsigned ColStart = Column;
+    skip(1);
+    while(true) {
+      if (   *Cur == '[' || *Cur == ']'
+          || *Cur == '{' || *Cur == '}'
+          || *Cur == ',')
+        break;
+      StringRef::iterator i = skip_ns_char(Cur);
+      if (i == Cur)
+        break;
+      Cur = i;
+      ++Column;
+    }
+
+    if (Start == Cur) {
+      setError("Got empty alias or anchor", Start);
+      return false;
+    }
+
+    Token t;
+    t.Kind = IsAlias ? Token::TK_Alias : Token::TK_Anchor;
+    t.Range = StringRef(Start, Cur - Start);
+    t.Scalar.Value = t.Range.substr(1);
+    TokenQueue.push_back(t);
+
+    // Alias and anchors be simple keys.
     if (IsSimpleKeyAllowed) {
       SimpleKey SK;
       SK.Tok = &TokenQueue.back();
@@ -758,6 +804,12 @@ class Scanner {
 
     if (*Cur == ':' && (FlowLevel || isBlankOrBreak(Cur + 1)))
       return scanValue();
+
+    if (*Cur == '*')
+      return scanAliasOrAnchor(true);
+
+    if (*Cur == '&')
+      return scanAliasOrAnchor(false);
 
     if (*Cur == '\'')
       return scanFlowScalar(false);
@@ -873,6 +925,7 @@ public:
 
 class Node {
   unsigned int TypeID;
+  StringRef Anchor;
 
 protected:
   Document *Doc;
@@ -883,10 +936,17 @@ public:
     NK_Scalar,
     NK_KeyValue,
     NK_Mapping,
-    NK_Sequence
+    NK_Sequence,
+    NK_Alias
   };
 
-  Node(unsigned int Type, Document *D) : TypeID(Type), Doc(D) {}
+  Node(unsigned int Type, Document *D, StringRef A)
+    : TypeID(Type)
+    , Anchor(A)
+    , Doc(D)
+  {}
+
+  StringRef getAnchor() const { return Anchor; }
 
   unsigned int getType() const { return TypeID; }
   static inline bool classof(const Node *) { return true; }
@@ -903,7 +963,7 @@ public:
 
 class NullNode : public Node {
 public:
-  NullNode(Document *D) : Node(NK_Null, D) {}
+  NullNode(Document *D) : Node(NK_Null, D, StringRef()) {}
 
   static inline bool classof(const NullNode *) { return true; }
   static inline bool classof(const Node *n) {
@@ -915,7 +975,10 @@ class ScalarNode : public Node {
   StringRef Value;
 
 public:
-  ScalarNode(Document *D, StringRef Val) : Node(NK_Scalar, D), Value(Val) {}
+  ScalarNode(Document *D, StringRef Anchor, StringRef Val)
+    : Node(NK_Scalar, D, Anchor)
+    , Value(Val)
+  {}
 
   // Return Value without any escaping or folding or other fun YAML stuff. This
   // is the exact bytes that are contained in the file (after converstion to
@@ -934,9 +997,10 @@ class KeyValueNode : public Node {
 
 public:
   KeyValueNode(Document *D)
-    : Node(NK_KeyValue, D)
+    : Node(NK_KeyValue, D, StringRef())
     , Key(0)
-    , Value(0) {}
+    , Value(0)
+  {}
 
   static inline bool classof(const KeyValueNode *) { return true; }
   static inline bool classof(const Node *n) {
@@ -1012,8 +1076,8 @@ class MappingNode : public Node {
   bool IsAtBeginning;
 
 public:
-  MappingNode(Document *D, bool isBlock)
-    : Node(NK_Mapping, D)
+  MappingNode(Document *D, StringRef Anchor, bool isBlock)
+    : Node(NK_Mapping, D, Anchor)
     , IsBlock(isBlock)
     , IsAtBeginning(true)
   {}
@@ -1190,8 +1254,8 @@ public:
     }
   };
 
-  SequenceNode(Document *D, bool isBlock)
-    : Node(NK_Sequence, D)
+  SequenceNode(Document *D, StringRef Anchor, bool isBlock)
+    : Node(NK_Sequence, D, Anchor)
     , IsBlock(isBlock)
     , IsAtBeginning(true)
   {}
@@ -1210,6 +1274,22 @@ public:
   }
 
   iterator end() { return iterator(); }
+};
+
+class AliasNode : public Node {
+  StringRef Name;
+
+public:
+  AliasNode(Document *D, StringRef Val)
+    : Node(NK_Alias, D, StringRef()), Name(Val) {}
+
+  StringRef getName() const { return Name; }
+  Node *getTarget();
+
+  static inline bool classof(const ScalarNode *) { return true; }
+  static inline bool classof(const Node *n) {
+    return n->getType() == NK_Alias;
+  }
 };
 
 class Document {
@@ -1267,28 +1347,41 @@ class Document {
 public:
   Node *parseBlockNode() {
     Token t = getNext();
+    // Handle properties.
+    Token AnchorInfo;
+    switch (t.Kind) {
+    case Token::TK_Alias:
+      return new (NodeAllocator.Allocate<AliasNode>())
+        AliasNode(this, t.Scalar.Value);
+    case Token::TK_Anchor:
+      AnchorInfo = t;
+      t = getNext();
+    default:
+      break;
+    }
+
     switch (t.Kind) {
     case Token::TK_BlockSequenceStart:
       return new (NodeAllocator.Allocate<SequenceNode>())
-        SequenceNode(this, true);
+        SequenceNode(this, AnchorInfo.Scalar.Value, true);
     case Token::TK_BlockMappingStart:
       return new (NodeAllocator.Allocate<MappingNode>())
-        MappingNode(this, true);
+        MappingNode(this, AnchorInfo.Scalar.Value, true);
     case Token::TK_FlowSequenceStart:
       return new (NodeAllocator.Allocate<SequenceNode>())
-        SequenceNode(this, false);
+        SequenceNode(this, AnchorInfo.Scalar.Value, false);
     case Token::TK_FlowMappingStart:
       return new (NodeAllocator.Allocate<MappingNode>())
-        MappingNode(this, false);
+        MappingNode(this, AnchorInfo.Scalar.Value, false);
     case Token::TK_Scalar:
       return new (NodeAllocator.Allocate<ScalarNode>())
-        ScalarNode(this, t.Scalar.Value);
+        ScalarNode(this, AnchorInfo.Scalar.Value, t.Scalar.Value);
     default:
       setError("Unexpected token. Expected Block Node.", t);
     case Token::TK_Error:
       return 0;
     }
-    assert(false && "Control flow shouldn't reach here.");
+    llvm_unreachable("Control flow shouldn't reach here.");
     return 0;
   }
 
@@ -1402,13 +1495,14 @@ void dumpNode( yaml::Node *n
              , bool SuppressFirstIndent = false) {
   if (!n)
     return;
+  if (!SuppressFirstIndent)
+    outs() << indent(Indent);
+  StringRef Anchor = n->getAnchor();
+  if (!Anchor.empty())
+    outs() << "&" << Anchor << " ";
   if (yaml::ScalarNode *sn = dyn_cast<yaml::ScalarNode>(n)) {
-    if (!SuppressFirstIndent)
-      outs() << indent(Indent);
     outs() << "!!str \"" << sn->getRawValue() << "\"";
   } else if (yaml::SequenceNode *sn = dyn_cast<yaml::SequenceNode>(n)) {
-    if (!SuppressFirstIndent)
-      outs() << indent(Indent);
     outs() << "!!seq [\n";
     ++Indent;
     for (yaml::SequenceNode::iterator i = sn->begin(), e = sn->end();
@@ -1419,8 +1513,6 @@ void dumpNode( yaml::Node *n
     --Indent;
     outs() << indent(Indent) << "]";
   } else if (yaml::MappingNode *mn = dyn_cast<yaml::MappingNode>(n)) {
-    if (!SuppressFirstIndent)
-      outs() << indent(Indent);
     outs() << "!!map {\n";
     ++Indent;
     for (yaml::MappingNode::iterator i = mn->begin(), e = mn->end();
@@ -1434,9 +1526,9 @@ void dumpNode( yaml::Node *n
     }
     --Indent;
     outs() << indent(Indent) << "}";
+  } else if (yaml::AliasNode *an = dyn_cast<yaml::AliasNode>(n)){
+    outs() << "*" << an->getName();
   } else if (dyn_cast<yaml::NullNode>(n)) {
-    if (!SuppressFirstIndent)
-      outs() << indent(Indent);
     outs() << "!!null null";
   }
 }
@@ -1508,6 +1600,12 @@ int main(int argc, char **argv) {
       break;
     case yaml::Token::TK_Scalar:
       outs() << "Scalar(" << t.Scalar.Value << "): ";
+      break;
+    case yaml::Token::TK_Alias:
+      outs() << "Alias(" << t.Scalar.Value << "): ";
+      break;
+    case yaml::Token::TK_Anchor:
+      outs() << "Anchor(" << t.Scalar.Value << "): ";
       break;
     case yaml::Token::TK_Error:
       break;
