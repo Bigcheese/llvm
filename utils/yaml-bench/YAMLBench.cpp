@@ -1055,22 +1055,43 @@ public:
       if (CurrentEntry)
         CurrentEntry->skip();
       Token t = MN->peekNext();
-      switch (t.Kind) {
-      case Token::TK_Key:
+      if (t.Kind == Token::TK_Key) {
         // KeyValueNode eats the TK_Key. That way it can detect null keys.
         CurrentEntry = new (MN->getAllocator().Allocate<KeyValueNode>())
           KeyValueNode(MN->Doc);
-        break;
-      case Token::TK_BlockEnd:
-        MN->getNext();
-        MN = 0;
-        CurrentEntry = 0;
-        break;
-      default:
-        MN->setError("Unexpected token Expected Key or Block End", t);
-      case Token::TK_Error:
-        MN = 0;
-        CurrentEntry = 0;
+      } else if (MN->IsBlock) {
+        switch (t.Kind) {
+        case Token::TK_BlockEnd:
+          MN->getNext();
+          MN = 0;
+          CurrentEntry = 0;
+          break;
+        default:
+          MN->setError("Unexpected token. Expected Key or Block End", t);
+        case Token::TK_Error:
+          MN = 0;
+          CurrentEntry = 0;
+        }
+      } else {
+        switch (t.Kind) {
+        case Token::TK_FlowEntry:
+          // Eat the flow entry and recurse.
+          MN->getNext();
+          return ++(*this);
+        case Token::TK_FlowMappingEnd:
+          MN->getNext();
+        case Token::TK_Error:
+          // Set this to end iterator.
+          MN = 0;
+          CurrentEntry = 0;
+          break;
+        default:
+          MN->setError( "Unexpected token. Expected Key, Flow Entry, or Flow "
+                        "Mapping End."
+                      , t);
+          MN = 0;
+          CurrentEntry = 0;
+        }
       }
       return *this;
     }
@@ -1253,14 +1274,12 @@ public:
     case Token::TK_BlockMappingStart:
       return new (NodeAllocator.Allocate<MappingNode>())
         MappingNode(this, true);
-      break;
     case Token::TK_FlowSequenceStart:
       return new (NodeAllocator.Allocate<SequenceNode>())
         SequenceNode(this, false);
-#if 0
     case Token::TK_FlowMappingStart:
-      break;
-#endif
+      return new (NodeAllocator.Allocate<MappingNode>())
+        MappingNode(this, false);
     case Token::TK_Scalar:
       return new (NodeAllocator.Allocate<ScalarNode>())
         ScalarNode(this, t.Scalar.Value);
