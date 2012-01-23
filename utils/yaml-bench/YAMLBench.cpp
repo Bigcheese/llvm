@@ -893,6 +893,7 @@ public:
   Node *parseBlockNode();
   BumpPtrAllocator &getAllocator();
   void setError(const Twine &Msg, Token &Tok);
+  bool failed() const;
 
   virtual void skip() {}
 };
@@ -968,6 +969,8 @@ public:
     if (Value)
       return Value;
     getKey()->skip();
+    if (failed())
+      return Value = new (getAllocator().Allocate<NullNode>()) NullNode(Doc);
 
     // Handle implicit null values.
     {
@@ -978,8 +981,10 @@ public:
         return Value = new (getAllocator().Allocate<NullNode>()) NullNode(Doc);
       }
 
-      assert(t.Kind == Token::TK_Value &&
-        "Got invalid mapping token sequence!");
+      if (t.Kind != Token::TK_Value) {
+        setError("Unexpected token in sequence", t);
+        return Value = new (getAllocator().Allocate<NullNode>()) NullNode(Doc);
+      }
       getNext(); // skip TK_Value.
     }
 
@@ -1181,6 +1186,10 @@ class Document {
     S.S.setError(Msg, Tok.Range.begin());
   }
 
+  bool failed() const {
+    return S.S.failed();
+  }
+
   void handleTagDirective(const Token &t) {
 
   }
@@ -1323,6 +1332,10 @@ BumpPtrAllocator &Node::getAllocator() {
 
 void Node::setError(const Twine &Msg, Token &Tok) {
   Doc->setError(Msg, Tok);
+}
+
+bool Node::failed() const {
+  return Doc->failed();
 }
 
 } // end namespace yaml.
