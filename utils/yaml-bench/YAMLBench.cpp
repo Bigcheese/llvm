@@ -124,6 +124,7 @@ struct Token {
     TK_Scalar,
     TK_Alias,
     TK_Anchor,
+    TK_Tag
   } Kind;
 
   StringRef Range;
@@ -1606,6 +1607,9 @@ int main(int argc, char **argv) {
       break;
     case yaml::Token::TK_Anchor:
       outs() << "Anchor(" << t.Scalar.Value << "): ";
+      break;
+    case yaml::Token::TK_Tag:
+      outs() << "Tag: ";
       break;
     case yaml::Token::TK_Error:
       break;
