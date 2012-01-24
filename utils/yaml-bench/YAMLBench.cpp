@@ -1610,11 +1610,11 @@ public:
         return 0;
       }
       AnchorInfo = getNext(); // Consume TK_Anchor.
-      t = getNext();
+      t = peekNext();
       goto parse_property;
     case Token::TK_Tag:
       getNext(); // Skip TK_Tag.
-      t = getNext();
+      t = peekNext();
       goto parse_property;
     default:
       break;
