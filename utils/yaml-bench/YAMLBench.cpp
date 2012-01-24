@@ -173,6 +173,22 @@ static bool wasEscaped(StringRef::iterator First,
   return (Position - 1 - I) % 2 == 1;
 }
 
+static bool is_ns_hex_digit(const char C) {
+  if (  (C >= '0' && C <= '9')
+     || (C >= 'a' && C <= 'z')
+     || (C >= 'A' && C <= 'Z'))
+    return true;
+  return false;
+}
+
+static bool is_ns_word_char(const char C) {
+  if (  C == '-'
+     || (C >= 'a' && C <= 'z')
+     || (C >= 'A' && C <= 'Z'))
+    return true;
+  return false;
+}
+
 class Scanner {
   SourceMgr *SM;
   MemoryBuffer *InputBuffer;
@@ -345,6 +361,26 @@ class Scanner {
       Pos = i;
     }
     return Pos;
+  }
+
+  StringRef scan_ns_uri_char() {
+    StringRef::iterator Start = Cur;
+    while (true) {
+      if (Cur == End)
+        break;
+      if ((   *Cur == '%'
+           && Cur + 2 < End
+           && is_ns_hex_digit(*(Cur + 1))
+           && is_ns_hex_digit(*(Cur + 2)))
+         || is_ns_word_char(*Cur)
+         || StringRef(Cur, 1).find_first_of("#;/?:@&=+$,_.!~*'()[]")
+            != StringRef::npos) {
+        ++Cur;
+        ++Column;
+      } else
+        break;
+    }
+    return StringRef(Start, Cur - Start);
   }
 
   StringRef scan_ns_plain_one_line() {
@@ -909,6 +945,27 @@ class Scanner {
     return true;
   }
 
+  bool scanTag() {
+    StringRef::iterator Start = Cur;
+    skip(1); // Eat !.
+    if (Cur == End || isBlankOrBreak(Cur)); // An empty tag.
+    else if (*Cur == '<') {
+      skip(1);
+      StringRef VerbatiumTag = scan_ns_uri_char();
+      if (!consume('>'))
+        return false;
+    } else {
+      // FIXME: Actually parse the c-ns-shorthand-tag rule.
+      Cur = skip_while<&Scanner::skip_ns_char>(Cur);
+    }
+
+    Token t;
+    t.Kind = Token::TK_Tag;
+    t.Range = StringRef(Start, Cur - Start);
+    TokenQueue.push_back(t);
+    return true;
+  }
+
   bool fetchMoreTokens() {
     if (IsStartOfStream)
       return scanStreamStart();
@@ -969,10 +1026,13 @@ class Scanner {
     if (*Cur == '&')
       return scanAliasOrAnchor(false);
 
-    if (*Cur == '|')
+    if (*Cur == '!')
+      return scanTag();
+
+    if (*Cur == '|' && !FlowLevel)
       return scanBlockScalar(true);
 
-    if (*Cur == '>')
+    if (*Cur == '>' && !FlowLevel)
       return scanBlockScalar(false);
 
     if (*Cur == '\'')
@@ -1052,14 +1112,16 @@ public:
     SM->PrintMessage(Loc, Kind, Msg, Ranges);
   }
 
-  void setError(const Twine &Msg) {
-    printError(SMLoc::getFromPointer(Cur), SourceMgr::DK_Error, Msg);
+  void setError(const Twine &Msg, StringRef::iterator Pos) {
+    // Don't print out more errors after the first one we encounter. The rest
+    // are just the result of the first, and have no meaning.
+    if (!Failed)
+      printError(SMLoc::getFromPointer(Pos), SourceMgr::DK_Error, Msg);
     Failed = true;
   }
 
-  void setError(const Twine &Msg, StringRef::iterator Pos) {
-    printError(SMLoc::getFromPointer(Pos), SourceMgr::DK_Error, Msg);
-    Failed = true;
+  void setError(const Twine &Msg) {
+    setError(Msg, Cur);
   }
 
   bool failed() {
@@ -1513,13 +1575,22 @@ public:
     Token t = getNext();
     // Handle properties.
     Token AnchorInfo;
+  parse_property:
     switch (t.Kind) {
     case Token::TK_Alias:
       return new (NodeAllocator.Allocate<AliasNode>())
         AliasNode(this, t.Scalar.Value);
     case Token::TK_Anchor:
+      if (AnchorInfo.Kind == Token::TK_Anchor) {
+        setError("Already encountered an anchor for this node!", t);
+        return 0;
+      }
       AnchorInfo = t;
       t = getNext();
+      goto parse_property;
+    case Token::TK_Tag:
+      t = getNext();
+      goto parse_property;
     default:
       break;
     }
