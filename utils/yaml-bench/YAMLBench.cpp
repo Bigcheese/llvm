@@ -154,6 +154,25 @@ struct SimpleKey {
   }
 };
 
+// Forbidding inlining improves performance by roughly 20%.
+// FIXME: Remove once llvm optimizes this to the faster version without hints.
+LLVM_ATTRIBUTE_NOINLINE static bool
+wasEscaped(StringRef::iterator First, StringRef::iterator Position);
+
+// Returns whether a character at 'Position' was escaped with a leading '\'.
+// 'First' specifies the position of the first character in the string.
+static bool wasEscaped(StringRef::iterator First,
+                       StringRef::iterator Position) {
+  assert(Position - 1 >= First);
+  StringRef::iterator I = Position - 1;
+  // We calulate the number of consecutive '\'s before the current position
+  // by iterating backwards through our string.
+  while (I >= First && *I == '\\') --I;
+  // (Position - 1 - I) now contains the number of '\'s before the current
+  // position. If it is odd, the character at 'Positon' was escaped.
+  return (Position - 1 - I) % 2 == 1;
+}
+
 class Scanner {
   SourceMgr *SM;
   MemoryBuffer *InputBuffer;
@@ -304,6 +323,17 @@ class Scanner {
     if (*Pos == ' ' || *Pos == '\t')
       return Pos;
     return skip_nb_char(Pos);
+  }
+
+  StringRef::iterator skip_nb_json(StringRef::iterator Pos) {
+    if (Pos == End)
+      return Pos;
+    if (*Pos == 0x09 || (*Pos >= 0x20 && uint8_t(*Pos) <= 0x7E))
+      return Pos + 1;
+    UTF8Decoded u8d = decodeUTF8(Pos);
+    if (u8d.second != 0 && u8d.first >= 0x80 && u8d.first <= 0x10FFFF)
+      return Pos + u8d.second;
+    return Pos;
   }
 
   template<StringRef::iterator (Scanner::*Func)(StringRef::iterator)>
@@ -637,13 +667,59 @@ class Scanner {
   bool scanFlowScalar(bool IsDoubleQuoted) {
     StringRef::iterator Start = Cur;
     unsigned ColStart = Column;
-    skip(1); // eat quote.
-    while (*Cur != (IsDoubleQuoted ? '"' : '\'')) {
-      StringRef::iterator i = skip_nb_char(Cur);
-      if (i == Cur)
-        break;
-      Cur = i;
-      ++Column;
+    if (IsDoubleQuoted) {
+      do {
+        // Step over the current quote.
+        StringRef::iterator i = skip_nb_char(Cur);
+        ++Column;
+        Cur = i;
+        // Find the next quote.
+        while (Cur != End && *Cur != '"') {
+          i = skip_nb_json(Cur);
+          if (i == Cur) {
+            i = skip_b_char(Cur);
+            if (i == Cur)
+              break;
+            Cur = i;
+            Column = 0;
+            ++Line;
+          } else {
+            Cur = i;
+            ++Column;
+          }
+        }
+        if (i == End) {
+          setError("Hit EOF while looking for \"", i);
+          return false;
+        }
+        Cur = i;
+        // Repeat until the previous character was not a '\' or was an escaped
+        // backslash.
+      } while (*(Cur - 1) == '\\' && wasEscaped(Start + 1, Cur));
+    } else {
+      skip(1);
+      while (true) {
+        // Skip a ' followed by another '.
+        if (Cur + 1 < End && *Cur == '\'' && *(Cur + 1) == '\'') {
+          skip(2);
+          continue;
+        } else if (*Cur == '\'')
+          break;
+        StringRef::iterator i = skip_nb_char(Cur);
+        if (i == Cur) {
+          i = skip_b_char(Cur);
+          if (i == Cur)
+            break;
+          Cur = i;
+          Column = 0;
+          ++Line;
+        } else {
+          if (i == End)
+            break;
+          Cur = i;
+          ++Column;
+        }
+      }
     }
     StringRef Value(Start + 1, Cur - (Start + 1));
     skip(1); // Skip ending quote.
@@ -671,17 +747,61 @@ class Scanner {
   bool scanPlainScalar() {
     StringRef::iterator Start = Cur;
     unsigned ColStart = Column;
+    unsigned LeadingBlanks = 0;
+    assert(Indent >= -1 && "Indent must be >= -1 !");
+    unsigned indent = static_cast<unsigned>(Indent + 1);
     while (true) {
-      if ((*Cur == ':' && isBlankOrBreak(Cur + 1))
-          || (FlowLevel
-              && StringRef(Cur, 1).find_first_of(",:?[]{}")
-                 != StringRef::npos))
+      if (*Cur == '#')
         break;
-      StringRef::iterator i = skip_nb_char(Cur);
-      if (i == Cur)
+
+      while (!isBlankOrBreak(Cur)) {
+        if (FlowLevel && *Cur == ':' && !isBlankOrBreak(Cur + 1)) {
+          setError("Found unexpected ':' while scanning a plain scalar", Cur);
+          return false;
+        }
+
+        // Check for the end of the plain scalar.
+        if (  (*Cur == ':' && isBlankOrBreak(Cur + 1))
+           || (  FlowLevel
+           && (StringRef(Cur, 1).find_first_of(",:?[]{}") != StringRef::npos)))
+          break;
+
+        StringRef::iterator i = skip_nb_char(Cur);
+        if (i == Cur)
+          break;
+        Cur = i;
+        ++Column;
+      }
+
+      // Are we at the end?
+      if (!isBlankOrBreak(Cur))
         break;
-      Cur = i;
-      ++Column;
+
+      // Eat blanks.
+      StringRef::iterator Tmp = Cur;
+      while (isBlankOrBreak(Tmp)) {
+        StringRef::iterator i = skip_s_white(Tmp);
+        if (i != Tmp) {
+          if (LeadingBlanks && (Column < indent) && *Tmp == '\t') {
+            setError("Found invalid tab character in indentation", Tmp);
+            return false;
+          }
+          Tmp = i;
+          ++Column;
+        } else {
+          i = skip_b_char(Tmp);
+          if (!LeadingBlanks)
+            LeadingBlanks = 1;
+          Tmp = i;
+          Column = 0;
+          ++Line;
+        }
+      }
+
+      if (!FlowLevel && Column < indent)
+        break;
+
+      Cur = Tmp;
     }
     if (Start == Cur) {
       setError("Got empty plain scalar", Start);
