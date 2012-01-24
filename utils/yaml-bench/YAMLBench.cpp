@@ -1649,6 +1649,10 @@ public:
       getNext();
       return new (NodeAllocator.Allocate<ScalarNode>())
         ScalarNode(this, AnchorInfo.Scalar.Value, t.Scalar.Value);
+    case Token::TK_DocumentStart:
+    case Token::TK_DocumentEnd:
+    case Token::TK_StreamEnd:
+      return new (NodeAllocator.Allocate<NullNode>()) NullNode(this);
     default:
       setError("Unexpected token. Expected Block Node.", t);
     case Token::TK_Error:
