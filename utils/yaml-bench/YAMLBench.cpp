@@ -1399,7 +1399,15 @@ public:
 };
 
 class SequenceNode : public Node {
-  bool IsBlock;
+public:
+  enum Type {
+    ST_Block,
+    ST_Flow,
+    ST_Indentless
+  };
+
+private:
+  Type SeqType;
   bool IsAtBeginning;
 
 public:
@@ -1435,7 +1443,7 @@ public:
       if (CurrentEntry)
         CurrentEntry->skip();
       Token t = SN->peekNext();
-      if (SN->IsBlock) {
+      if (SN->SeqType == ST_Block) {
         switch (t.Kind) {
         case Token::TK_BlockEntry:
           SN->getNext();
@@ -1457,7 +1465,22 @@ public:
           SN = 0;
           CurrentEntry = 0;
         }
-      } else {
+      } else if (SN->SeqType == ST_Indentless) {
+        switch (t.Kind) {
+        case Token::TK_BlockEntry:
+          SN->getNext();
+          CurrentEntry = SN->parseBlockNode();
+          if (CurrentEntry == 0) { // An error occured.
+            SN = 0;
+            CurrentEntry = 0;
+          }
+          break;
+        default:
+        case Token::TK_Error:
+          SN = 0;
+          CurrentEntry = 0;
+        }
+      } else if (SN->SeqType == ST_Flow) {
         switch (t.Kind) {
         case Token::TK_FlowEntry:
           // Eat the flow entry and recurse.
@@ -1480,9 +1503,9 @@ public:
     }
   };
 
-  SequenceNode(Document *D, StringRef Anchor, bool isBlock)
+  SequenceNode(Document *D, StringRef Anchor, Type T)
     : Node(NK_Sequence, D, Anchor)
-    , IsBlock(isBlock)
+    , SeqType(T)
     , IsAtBeginning(true)
   {}
 
@@ -1572,12 +1595,13 @@ class Document {
 
 public:
   Node *parseBlockNode() {
-    Token t = getNext();
+    Token t = peekNext();
     // Handle properties.
     Token AnchorInfo;
   parse_property:
     switch (t.Kind) {
     case Token::TK_Alias:
+      getNext();
       return new (NodeAllocator.Allocate<AliasNode>())
         AliasNode(this, t.Scalar.Value);
     case Token::TK_Anchor:
@@ -1585,10 +1609,11 @@ public:
         setError("Already encountered an anchor for this node!", t);
         return 0;
       }
-      AnchorInfo = t;
+      AnchorInfo = getNext(); // Consume TK_Anchor.
       t = getNext();
       goto parse_property;
     case Token::TK_Tag:
+      getNext(); // Skip TK_Tag.
       t = getNext();
       goto parse_property;
     default:
@@ -1596,19 +1621,32 @@ public:
     }
 
     switch (t.Kind) {
-    case Token::TK_BlockSequenceStart:
+    case Token::TK_BlockEntry:
+      // We got an unindented BlockEntry sequence. This is not terminated with
+      // a BlockEnd.
+      // Don't eat the TK_BlockEntry, SequenceNode needs it.
       return new (NodeAllocator.Allocate<SequenceNode>())
-        SequenceNode(this, AnchorInfo.Scalar.Value, true);
+        SequenceNode( this
+                    , AnchorInfo.Scalar.Value
+                    , SequenceNode::ST_Indentless);
+    case Token::TK_BlockSequenceStart:
+      getNext();
+      return new (NodeAllocator.Allocate<SequenceNode>())
+        SequenceNode(this, AnchorInfo.Scalar.Value, SequenceNode::ST_Block);
     case Token::TK_BlockMappingStart:
+      getNext();
       return new (NodeAllocator.Allocate<MappingNode>())
         MappingNode(this, AnchorInfo.Scalar.Value, true);
     case Token::TK_FlowSequenceStart:
+      getNext();
       return new (NodeAllocator.Allocate<SequenceNode>())
-        SequenceNode(this, AnchorInfo.Scalar.Value, false);
+        SequenceNode(this, AnchorInfo.Scalar.Value, SequenceNode::ST_Flow);
     case Token::TK_FlowMappingStart:
+      getNext();
       return new (NodeAllocator.Allocate<MappingNode>())
         MappingNode(this, AnchorInfo.Scalar.Value, false);
     case Token::TK_Scalar:
+      getNext();
       return new (NodeAllocator.Allocate<ScalarNode>())
         ScalarNode(this, AnchorInfo.Scalar.Value, t.Scalar.Value);
     default:
