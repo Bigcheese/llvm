@@ -1,5 +1,7 @@
-# RUN: yaml-bench %s
+# RUN: yaml-bench %s 2> | FileCheck %s
 
 %YAML 1.1
 %YAML 1.1
 foo
+
+# CHECK: error
