@@ -53,7 +53,9 @@ BOMInfo getBOM(StringRef input) {
   switch (uint8_t(input[0])) {
   case 0x00:
     if (input.size() >= 4) {
-      if (input[1] == 0 && input[2] == 0xFE && input[3] == 0xFF)
+      if (  input[1] == 0
+         && uint8_t(input[2]) == 0xFE
+         && uint8_t(input[3]) == 0xFF)
         return std::make_pair(BT_UTF32_BE, 4);
       if (input[1] == 0 && input[2] == 0 && input[3] != 0)
         return std::make_pair(BT_UTF32_BE, 0);
@@ -63,18 +65,23 @@ BOMInfo getBOM(StringRef input) {
       return std::make_pair(BT_UTF16_BE, 0);
     return std::make_pair(BT_Unknown, 0);
   case 0xFF:
-    if (input.size() >= 4 && input[1] == 0xFE && input[2] == 0 && input[3] == 0)
+    if (  input.size() >= 4
+       && uint8_t(input[1]) == 0xFE
+       && input[2] == 0
+       && input[3] == 0)
       return std::make_pair(BT_UTF32_LE, 4);
 
-    if (input.size() >= 2 && input[1] == 0xFE)
+    if (input.size() >= 2 && uint8_t(input[1]) == 0xFE)
       return std::make_pair(BT_UTF16_LE, 2);
     return std::make_pair(BT_Unknown, 0);
   case 0xFE:
-    if (input.size() >= 2 && input[1] == 0xFF)
+    if (input.size() >= 2 && uint8_t(input[1]) == 0xFF)
       return std::make_pair(BT_UTF16_BE, 2);
     return std::make_pair(BT_Unknown, 0);
   case 0xEF:
-    if (input.size() >= 3 && input[1] == 0xBB && input[2] == 0xBF)
+    if (  input.size() >= 3
+       && uint8_t(input[1]) == 0xBB
+       && uint8_t(input[2]) == 0xBF)
       return std::make_pair(BT_UTF8, 3);
     return std::make_pair(BT_Unknown, 0);
   }
@@ -603,13 +610,26 @@ class Scanner {
   }
 
   bool scanFlowCollectionStart(bool IsSequence) {
-    IsSimpleKeyAllowed = true;
     Token t;
     t.Kind = IsSequence ? Token::TK_FlowSequenceStart
                         : Token::TK_FlowMappingStart;
     t.Range = StringRef(Cur, 1);
     skip(1);
     TokenQueue.push_back(t);
+
+    // [ and { may begin a simple key.
+    if (IsSimpleKeyAllowed) {
+      SimpleKey SK;
+      SK.Tok = &TokenQueue.back();
+      SK.Line = Line;
+      SK.Column = Column - 1;
+      SK.IsRequired = false;
+      SK.FlowLevel = FlowLevel;
+      SimpleKeys.push_back(SK);
+    }
+
+    // And may also be followed by a simple key.
+    IsSimpleKeyAllowed = true;
     ++FlowLevel;
     return true;
   }
@@ -682,9 +702,12 @@ class Scanner {
       assert(i != e && "SimpleKey not in token queue!");
       i = TokenQueue.insert(i, t);
 
-      // We may also to add a Block-Mapping-Start token.
+      // We may also need to add a Block-Mapping-Start token.
       rollIndent(SK.Column, Token::TK_BlockMappingStart, i);
 
+      // FIXME: This clear is here because the above invalidates all the
+      //        deque<Token>::iterators.
+      SimpleKeys.clear();
       IsSimpleKeyAllowed = false;
     } else {
       if (!FlowLevel)
@@ -1298,13 +1321,21 @@ public:
 };
 
 class MappingNode : public Node {
-  bool IsBlock;
+public:
+  enum Type {
+    MT_Block,
+    MT_Flow,
+    MT_Inline //< An inline mapping node is used for "[key: value]".
+  };
+
+private:
+  Type MType;
   bool IsAtBeginning;
 
 public:
-  MappingNode(Document *D, StringRef Anchor, bool isBlock)
+  MappingNode(Document *D, StringRef Anchor, Type T)
     : Node(NK_Mapping, D, Anchor)
-    , IsBlock(isBlock)
+    , MType(T)
     , IsAtBeginning(true)
   {}
 
@@ -1342,14 +1373,20 @@ public:
 
     iterator &operator++() {
       assert(MN && "Attempted to advance iterator past end!");
-      if (CurrentEntry)
+      if (CurrentEntry) {
         CurrentEntry->skip();
+        if (MN->MType == MT_Inline) {
+          MN = 0;
+          CurrentEntry = 0;
+          return *this;
+        }
+      }
       Token t = MN->peekNext();
       if (t.Kind == Token::TK_Key) {
         // KeyValueNode eats the TK_Key. That way it can detect null keys.
         CurrentEntry = new (MN->getAllocator().Allocate<KeyValueNode>())
           KeyValueNode(MN->Doc);
-      } else if (MN->IsBlock) {
+      } else if (MN->MType == MT_Block) {
         switch (t.Kind) {
         case Token::TK_BlockEnd:
           MN->getNext();
@@ -1496,6 +1533,8 @@ public:
         default:
           // Otherwise it must be a flow entry.
           CurrentEntry = SN->parseBlockNode();
+          if (!CurrentEntry)
+            SN = 0;
           break;
         }
       }
@@ -1636,7 +1675,7 @@ public:
     case Token::TK_BlockMappingStart:
       getNext();
       return new (NodeAllocator.Allocate<MappingNode>())
-        MappingNode(this, AnchorInfo.Scalar.Value, true);
+        MappingNode(this, AnchorInfo.Scalar.Value, MappingNode::MT_Block);
     case Token::TK_FlowSequenceStart:
       getNext();
       return new (NodeAllocator.Allocate<SequenceNode>())
@@ -1644,17 +1683,22 @@ public:
     case Token::TK_FlowMappingStart:
       getNext();
       return new (NodeAllocator.Allocate<MappingNode>())
-        MappingNode(this, AnchorInfo.Scalar.Value, false);
+        MappingNode(this, AnchorInfo.Scalar.Value, MappingNode::MT_Flow);
     case Token::TK_Scalar:
       getNext();
       return new (NodeAllocator.Allocate<ScalarNode>())
         ScalarNode(this, AnchorInfo.Scalar.Value, t.Scalar.Value);
+    case Token::TK_Key:
+      // Don't eat the TK_Key, KeyValueNode expects it.
+      return new (NodeAllocator.Allocate<MappingNode>())
+        MappingNode(this, AnchorInfo.Scalar.Value, MappingNode::MT_Inline);
     case Token::TK_DocumentStart:
     case Token::TK_DocumentEnd:
     case Token::TK_StreamEnd:
-      return new (NodeAllocator.Allocate<NullNode>()) NullNode(this);
     default:
-      setError("Unexpected token. Expected Block Node.", t);
+      // TODO: Properly handle tags. "[!!str ]" should resolve to !!str "", not
+      //       !!null null.
+      return new (NodeAllocator.Allocate<NullNode>()) NullNode(this);
     case Token::TK_Error:
       return 0;
     }
@@ -1671,6 +1715,8 @@ public:
   }
 
   bool skip() {
+    if (S.S.failed())
+      return false;
     Token &t = peekNext();
     if (t.Kind == Token::TK_StreamEnd)
       return false;
