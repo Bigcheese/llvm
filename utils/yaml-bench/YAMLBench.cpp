@@ -750,30 +750,9 @@ class Scanner {
     unsigned ColStart = Column;
     if (IsDoubleQuoted) {
       do {
-        // Step over the current quote.
-        StringRef::iterator i = skip_nb_char(Cur);
-        ++Column;
-        Cur = i;
-        // Find the next quote.
-        while (Cur != End && *Cur != '"') {
-          i = skip_nb_json(Cur);
-          if (i == Cur) {
-            i = skip_b_char(Cur);
-            if (i == Cur)
-              break;
-            Cur = i;
-            Column = 0;
-            ++Line;
-          } else {
-            Cur = i;
-            ++Column;
-          }
-        }
-        if (i == End) {
-          setError("Hit EOF while looking for \"", i);
-          return false;
-        }
-        Cur = i;
+        ++Cur;
+        while (Cur != End && *Cur != '"')
+          ++Cur;
         // Repeat until the previous character was not a '\' or was an escaped
         // backslash.
       } while (*(Cur - 1) == '\\' && wasEscaped(Start + 1, Cur));
