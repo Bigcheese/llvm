@@ -1,7 +1,9 @@
-# RUN: yaml-bench %s
+# RUN: yaml-bench %s 2> | FileCheck %s
 
 %TAG !o! tag:ben-kiki.org,2000:
 ---
 - !$a!b foo
 - !o! bar
 - !h!type baz
+
+# CHECK: error

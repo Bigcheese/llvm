@@ -1,5 +1,7 @@
-# RUN: yaml-bench %s
+# RUN: yaml-bench %s 2> | FileCheck %s
 
 %TAG ! !foo
 %TAG ! !foo
 bar
+
+# CHECK: error

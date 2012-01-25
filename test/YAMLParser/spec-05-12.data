@@ -1,7 +1,7 @@
-# RUN: yaml-bench %s
+# RUN: yaml-bench %s 2> | FileCheck %s
 
 # Tabs do's and don'ts:
-# comment: 	
+# comment:
 quoted: "Quoted		"
 block: |
   void main() {
@@ -9,3 +9,5 @@ block: |
   }
 elsewhere:	# separation
 	indentation, in	plain scalar
+
+# CHECK: error
