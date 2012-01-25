@@ -1297,6 +1297,7 @@ public:
     {
       Token &t = peekNext();
       if (   t.Kind == Token::TK_BlockEnd
+          || t.Kind == Token::TK_FlowMappingEnd
           || t.Kind == Token::TK_Key
           || t.Kind == Token::TK_FlowEntry
           || t.Kind == Token::TK_Error) {
