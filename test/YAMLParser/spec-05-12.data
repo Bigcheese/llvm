@@ -1,4 +1,4 @@
-# RUN: yaml-bench %s 2> | FileCheck %s
+# RUN: yaml-bench %s 2>&1 | FileCheck %s
 
 # Tabs do's and don'ts:
 # comment:

@@ -1,4 +1,4 @@
-# RUN: yaml-bench %s 2> | FileCheck %s
+# RUN: yaml-bench %s 2>&1 | FileCheck %s
 
 %TAG !o! tag:ben-kiki.org,2000:
 ---

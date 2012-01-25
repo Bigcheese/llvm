@@ -1,4 +1,4 @@
-# RUN: yaml-bench %s 2> | FileCheck %s
+# RUN: yaml-bench %s 2>&1 | FileCheck %s
 
 ---
 --- ||| : foo
@@ -16,3 +16,4 @@
 ...
 
 # CHECK: error
+# CHECK: dDKSD ksd fiSD jiSDG ksdg
