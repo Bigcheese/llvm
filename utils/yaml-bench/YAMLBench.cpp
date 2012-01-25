@@ -1071,7 +1071,11 @@ class Scanner {
           || FirstChar.find_first_of("-?:,[]{}#&*!|>'\"%@`") != StringRef::npos)
         || (*Cur == '-' && !isBlankOrBreak(Cur + 1))
         || (!FlowLevel && (*Cur == '?' || *Cur == ':')
-            && isBlankOrBreak(Cur + 1)))
+            && isBlankOrBreak(Cur + 1))
+        || (!FlowLevel && *Cur == ':'
+                       && Cur + 2 < End
+                       && *(Cur + 1) == ':'
+                       && !isBlankOrBreak(Cur + 2)))
       return scanPlainScalar();
 
     setError("Unrecognized character while tokenizing.");
