@@ -814,7 +814,8 @@ class Scanner {
         break;
 
       while (!isBlankOrBreak(Cur)) {
-        if (FlowLevel && *Cur == ':' && !isBlankOrBreak(Cur + 1)) {
+        if (  FlowLevel && *Cur == ':'
+           && !(isBlankOrBreak(Cur + 1) || *(Cur + 1) == ',')) {
           setError("Found unexpected ':' while scanning a plain scalar", Cur);
           return false;
         }
