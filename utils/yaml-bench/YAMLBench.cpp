@@ -1272,8 +1272,8 @@ public:
           || t.Kind == Token::TK_Error) {
         return Key = new (getAllocator().Allocate<NullNode>()) NullNode(Doc);
       }
-      assert(t.Kind == Token::TK_Key && "Got invalid mapping token sequence!");
-      getNext(); // skip TK_Key.
+      if (t.Kind == Token::TK_Key)
+        getNext(); // skip TK_Key.
     }
 
     // Handle explicit null keys.
@@ -1393,7 +1393,7 @@ public:
         }
       }
       Token t = MN->peekNext();
-      if (t.Kind == Token::TK_Key) {
+      if (t.Kind == Token::TK_Key || t.Kind == Token::TK_Scalar) {
         // KeyValueNode eats the TK_Key. That way it can detect null keys.
         CurrentEntry = new (MN->getAllocator().Allocate<KeyValueNode>())
           KeyValueNode(MN->Doc);
