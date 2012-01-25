@@ -896,7 +896,8 @@ class Scanner {
     while(true) {
       if (   *Cur == '[' || *Cur == ']'
           || *Cur == '{' || *Cur == '}'
-          || *Cur == ',')
+          || *Cur == ','
+          || *Cur == ':')
         break;
       StringRef::iterator i = skip_ns_char(Cur);
       if (i == Cur)
