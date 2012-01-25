@@ -1,5 +1,0 @@
-# RUN: killthedoctor yaml-bench %s
-
-%TAG    !foo!   bar
-%TAG    !foo!   baz
---- foo

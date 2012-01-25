@@ -1,4 +1,0 @@
-# RUN: killthedoctor yaml-bench %s
-
-value = []
-value.append(value)

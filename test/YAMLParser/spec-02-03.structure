@@ -1,3 +1,0 @@
-# RUN: killthedoctor yaml-bench %s
-
-[(True, [True, True, True]), (True, [True, True, True])]

@@ -1,4 +1,0 @@
-# RUN: killthedoctor yaml-bench %s
-
-%YAML 123.C
----

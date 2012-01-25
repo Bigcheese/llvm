@@ -1,3 +1,0 @@
-# RUN: killthedoctor yaml-bench %s
-
-# This YAML stream contains no YAML documents.

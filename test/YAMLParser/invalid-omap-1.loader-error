@@ -1,5 +1,0 @@
-# RUN: killthedoctor yaml-bench %s
-
---- !!omap
-foo: bar
-baz: bat

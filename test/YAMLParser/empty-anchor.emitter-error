@@ -1,7 +1,0 @@
-# RUN: killthedoctor yaml-bench %s
-
-- !StreamStart
-- !DocumentStart
-- !Scalar { anchor: '', value: 'foo' }
-- !DocumentEnd
-- !StreamEnd

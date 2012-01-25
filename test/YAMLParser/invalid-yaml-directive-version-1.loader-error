@@ -1,5 +1,0 @@
-# RUN: killthedoctor yaml-bench %s
-
-# No version at all.
-%YAML
----

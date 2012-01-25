@@ -1,8 +1,0 @@
-# RUN: killthedoctor yaml-bench %s
-
-{
-    "Block style":
-        { "Clark" : "Evans", "Brian" : "Ingerson", "Oren" : "Ben-Kiki" },
-    "Flow style":
-        { "Clark" : "Evans", "Brian" : "Ingerson", "Oren" : "Ben-Kiki" },
-}

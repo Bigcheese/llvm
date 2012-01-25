@@ -1,5 +1,0 @@
-# RUN: killthedoctor yaml-bench %s
-
-ERROR:
-The YAML directive must only be
-given at most once per document.

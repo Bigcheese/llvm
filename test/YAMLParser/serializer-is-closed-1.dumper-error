@@ -1,6 +1,0 @@
-# RUN: killthedoctor yaml-bench %s
-
-dumper = yaml.Dumper(StringIO())
-dumper.open()
-dumper.close()
-dumper.open()

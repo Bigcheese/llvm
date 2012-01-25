@@ -1,3 +1,0 @@
-# RUN: killthedoctor yaml-bench %s
-
-&foo [1, 2, 3, &foo 4]

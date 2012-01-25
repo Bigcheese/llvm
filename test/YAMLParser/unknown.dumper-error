@@ -1,3 +1,0 @@
-# RUN: killthedoctor yaml-bench %s
-
-yaml.safe_dump(object)

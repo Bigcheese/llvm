@@ -1,3 +1,0 @@
-# RUN: killthedoctor yaml-bench %s
-
-"UTF-16-LE"

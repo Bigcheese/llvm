@@ -1,6 +1,0 @@
-# RUN: killthedoctor yaml-bench %s
-
-- !StreamStart
-- !StreamEnd
-- !StreamStart
-- !StreamEnd

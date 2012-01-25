@@ -1,4 +1,0 @@
-# RUN: killthedoctor yaml-bench %s
-
---- !!binary
-    двоичные данные в base64

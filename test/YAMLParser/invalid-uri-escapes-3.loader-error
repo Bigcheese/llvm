@@ -1,3 +1,0 @@
-# RUN: killthedoctor yaml-bench %s
-
---- !<foo%d0%af%d0%af%d0bar> baz

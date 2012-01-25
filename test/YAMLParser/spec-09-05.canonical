@@ -1,9 +1,0 @@
-# RUN: killthedoctor yaml-bench %s
-
-%YAML 1.1
----
-!!seq [
-  !!str "first ",
-  !!str "first\nlast",
-  !!str "first inner  \tlast",
-]

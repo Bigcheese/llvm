@@ -1,4 +1,0 @@
-# RUN: killthedoctor yaml-bench %s
-
---- !!binary
-    binary data encoded in base64 should be here.

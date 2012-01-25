@@ -1,5 +1,0 @@
-# RUN: killthedoctor yaml-bench %s
-
-ERROR:
-- c is an invalid escaped character.
-- q and - are invalid hex digits.

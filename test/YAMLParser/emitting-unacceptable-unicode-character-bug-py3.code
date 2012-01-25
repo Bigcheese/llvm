@@ -1,3 +1,0 @@
-# RUN: killthedoctor yaml-bench %s
-
-"\udd00"

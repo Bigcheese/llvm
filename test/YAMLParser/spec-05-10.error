@@ -1,5 +1,0 @@
-# RUN: killthedoctor yaml-bench %s
-
-ERROR:
- Reserved indicators can't
- start a plain scalar.

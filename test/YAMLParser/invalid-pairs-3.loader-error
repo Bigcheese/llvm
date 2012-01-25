@@ -1,6 +1,0 @@
-# RUN: killthedoctor yaml-bench %s
-
---- !!pairs
-- foo: bar
-- baz: bar
-  bar: bar
