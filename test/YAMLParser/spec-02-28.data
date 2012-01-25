@@ -1,4 +1,4 @@
-# RUN: yaml-bench %s
+# RUN: yaml-bench -canonical %s
 
 ---
 Time: 2001-11-23 15:01:42 -5

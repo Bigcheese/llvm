@@ -31,6 +31,28 @@
 #include <deque>
 #include <utility>
 
+static llvm::cl::opt<bool>
+  DumpTokens( "tokens"
+            , llvm::cl::desc("Print the tokenization of the file.")
+            , llvm::cl::init(false)
+            );
+
+static llvm::cl::opt<bool>
+  DumpCanonical( "canonical"
+               , llvm::cl::desc("Print the canonical YAML for this file.")
+               , llvm::cl::init(false)
+               );
+
+static llvm::cl::opt<std::string>
+  Input(llvm::cl::Positional, llvm::cl::desc("<input>"));
+
+static llvm::cl::opt<bool>
+  Verify( "verify"
+        , llvm::cl::desc(
+            "Run a quick verification useful for regression testing")
+        , llvm::cl::init(false)
+        );
+
 namespace llvm {
 namespace yaml {
 
@@ -1191,6 +1213,7 @@ public:
 
   document_iterator begin();
   document_iterator end();
+  void skip();
 };
 
 class Node {
@@ -1354,12 +1377,14 @@ public:
 private:
   Type MType;
   bool IsAtBeginning;
+  bool IsAtEnd;
 
 public:
   MappingNode(Document *D, StringRef Anchor, Type T)
     : Node(NK_Mapping, D, Anchor)
     , MType(T)
     , IsAtBeginning(true)
+    , IsAtEnd(false)
   {}
 
   static inline bool classof(const MappingNode *) { return true; }
@@ -1397,6 +1422,7 @@ public:
     iterator &operator++() {
       assert(MN && "Attempted to advance iterator past end!");
       if (MN->failed()) {
+        MN->IsAtEnd = true;
         MN = 0;
         CurrentEntry = 0;
         return *this;
@@ -1404,6 +1430,7 @@ public:
       if (CurrentEntry) {
         CurrentEntry->skip();
         if (MN->MType == MT_Inline) {
+          MN->IsAtEnd = true;
           MN = 0;
           CurrentEntry = 0;
           return *this;
@@ -1418,12 +1445,14 @@ public:
         switch (t.Kind) {
         case Token::TK_BlockEnd:
           MN->getNext();
+          MN->IsAtEnd = true;
           MN = 0;
           CurrentEntry = 0;
           break;
         default:
           MN->setError("Unexpected token. Expected Key or Block End", t);
         case Token::TK_Error:
+          MN->IsAtEnd = true;
           MN = 0;
           CurrentEntry = 0;
         }
@@ -1437,6 +1466,7 @@ public:
           MN->getNext();
         case Token::TK_Error:
           // Set this to end iterator.
+          MN->IsAtEnd = true;
           MN = 0;
           CurrentEntry = 0;
           break;
@@ -1444,6 +1474,7 @@ public:
           MN->setError( "Unexpected token. Expected Key, Flow Entry, or Flow "
                         "Mapping End."
                       , t);
+          MN->IsAtEnd = true;
           MN = 0;
           CurrentEntry = 0;
         }
@@ -1461,6 +1492,14 @@ public:
   }
 
   iterator end() { return iterator(); }
+
+  virtual void skip() {
+    // TODO: support skipping from the middle of a parsed map ;/
+    assert((IsAtBeginning || IsAtEnd) && "Cannot skip mid parse!");
+    if (IsAtBeginning)
+      for (iterator i = begin(), e = end(); i != e; ++i)
+        i->skip();
+  }
 };
 
 class SequenceNode : public Node {
@@ -1474,6 +1513,7 @@ public:
 private:
   Type SeqType;
   bool IsAtBeginning;
+  bool IsAtEnd;
 
 public:
   class iterator {
@@ -1506,6 +1546,7 @@ public:
     iterator &operator++() {
       assert(SN && "Attempted to advance iterator past end!");
       if (SN->failed()) {
+        SN->IsAtEnd = true;
         SN = 0;
         CurrentEntry = 0;
         return *this;
@@ -1519,12 +1560,14 @@ public:
           SN->getNext();
           CurrentEntry = SN->parseBlockNode();
           if (CurrentEntry == 0) { // An error occured.
+            SN->IsAtEnd = true;
             SN = 0;
             CurrentEntry = 0;
           }
           break;
         case Token::TK_BlockEnd:
           SN->getNext();
+          SN->IsAtEnd = true;
           SN = 0;
           CurrentEntry = 0;
           break;
@@ -1532,6 +1575,7 @@ public:
           SN->setError( "Unexpected token. Expected Block Entry or Block End."
                       , t);
         case Token::TK_Error:
+          SN->IsAtEnd = true;
           SN = 0;
           CurrentEntry = 0;
         }
@@ -1541,12 +1585,14 @@ public:
           SN->getNext();
           CurrentEntry = SN->parseBlockNode();
           if (CurrentEntry == 0) { // An error occured.
+            SN->IsAtEnd = true;
             SN = 0;
             CurrentEntry = 0;
           }
           break;
         default:
         case Token::TK_Error:
+          SN->IsAtEnd = true;
           SN = 0;
           CurrentEntry = 0;
         }
@@ -1560,14 +1606,17 @@ public:
           SN->getNext();
         case Token::TK_Error:
           // Set this to end iterator.
+          SN->IsAtEnd = true;
           SN = 0;
           CurrentEntry = 0;
           break;
         default:
           // Otherwise it must be a flow entry.
           CurrentEntry = SN->parseBlockNode();
-          if (!CurrentEntry)
+          if (!CurrentEntry) {
+            SN->IsAtEnd = true;
             SN = 0;
+          }
           break;
         }
       }
@@ -1579,6 +1628,7 @@ public:
     : Node(NK_Sequence, D, Anchor)
     , SeqType(T)
     , IsAtBeginning(true)
+    , IsAtEnd(false)
   {}
 
   static inline bool classof(const SequenceNode *) { return true; }
@@ -1595,6 +1645,14 @@ public:
   }
 
   iterator end() { return iterator(); }
+
+  virtual void skip() {
+    // TODO: support skipping from the middle of a parsed sequence ;/
+    assert((IsAtBeginning || IsAtEnd) && "Cannot skip mid parse!");
+    if (IsAtBeginning)
+      for (iterator i = begin(), e = end(); i != e; ++i)
+        i->skip();
+  }
 };
 
 class AliasNode : public Node {
@@ -1619,6 +1677,7 @@ class Document {
 
   Stream &S;
   BumpPtrAllocator NodeAllocator;
+  Node *Root;
 
   Token &peekNext() {
     return S.S.peekNext();
@@ -1739,7 +1798,7 @@ public:
     return 0;
   }
 
-  Document(Stream &s) : S(s) {
+  Document(Stream &s) : S(s), Root(0) {
     if (parseDirectives())
       expectToken(Token::TK_DocumentStart);
     Token &t = peekNext();
@@ -1747,9 +1806,14 @@ public:
       getNext();
   }
 
+  /// Finish parsing the current document and return true if there are more.
+  /// Return false otherwise.
   bool skip() {
     if (S.S.failed())
       return false;
+    if (!Root)
+      getRoot();
+    Root->skip();
     Token &t = peekNext();
     if (t.Kind == Token::TK_StreamEnd)
       return false;
@@ -1761,7 +1825,8 @@ public:
   }
 
   Node *getRoot() {
-    return parseBlockNode();
+    assert(!Root && "getRoot may only be called once per document!");
+    return Root = parseBlockNode();
   }
 };
 
@@ -1804,6 +1869,11 @@ document_iterator Stream::begin() {
 
 document_iterator Stream::end() {
   return document_iterator();
+}
+
+void Stream::skip() {
+  for (document_iterator i = begin(), e = end(); i != e; ++i)
+    i->skip();
 }
 
 Token &Node::peekNext() {
@@ -1889,17 +1959,7 @@ void dumpNode( yaml::Node *n
   }
 }
 
-int main(int argc, char **argv) {
-  // llvm::cl::ParseCommandLineOptions(argc, argv);
-
-  // How do I want to use yaml...
-  OwningPtr<MemoryBuffer> Buf;
-  if (MemoryBuffer::getFileOrSTDIN(argv[1], Buf))
-    return 1;
-
-  llvm::SourceMgr sm;
-  yaml::Scanner s(Buf->getBuffer(), &sm);
-
+void dumpTokens(yaml::Scanner &s) {
   while (true) {
     yaml::Token t = s.getNext();
     switch (t.Kind) {
@@ -1974,8 +2034,9 @@ int main(int argc, char **argv) {
       break;
     outs().flush();
   }
+}
 
-  yaml::Stream stream(Buf->getBuffer(), &sm);
+void dumpStream(yaml::Stream &stream) {
   for (yaml::document_iterator di = stream.begin(), de = stream.end(); di != de;
        ++di) {
     outs() << "%YAML 1.2\n"
@@ -1987,10 +2048,85 @@ int main(int argc, char **argv) {
       break;
     outs() << "\n...\n";
   }
+}
 
-  if (argc < 2) {
-    errs() << "Not enough args.\n";
-    return 1;
+void benchmark(llvm::TimerGroup &Group, llvm::StringRef Name,
+               llvm::StringRef JSONText) {
+  llvm::Timer BaseLine((Name + ": Loop").str(), Group);
+  BaseLine.startTimer();
+  char C = 0;
+  for (llvm::StringRef::iterator I = JSONText.begin(),
+                                 E = JSONText.end();
+       I != E; ++I) { C += *I; }
+  BaseLine.stopTimer();
+  volatile char DontOptimizeOut = C; (void)DontOptimizeOut;
+
+  llvm::Timer Tokenizing((Name + ": Tokenizing").str(), Group);
+  Tokenizing.startTimer();
+  {
+    llvm::SourceMgr SM;
+    llvm::yaml::Scanner scanner(JSONText, &SM);
+    for (;;) {
+      llvm::yaml::Token t = scanner.getNext();
+      if (  t.Kind == llvm::yaml::Token::TK_StreamEnd
+         || t.Kind == llvm::yaml::Token::TK_Error)
+        break;
+    }
+  }
+  Tokenizing.stopTimer();
+
+  llvm::Timer Parsing((Name + ": Parsing").str(), Group);
+  Parsing.startTimer();
+  {
+    llvm::SourceMgr SM;
+    llvm::yaml::Stream stream(JSONText, &SM);
+    stream.skip();
+  }
+  Parsing.stopTimer();
+}
+
+std::string createJSONText(size_t MemoryMB, unsigned ValueSize) {
+  std::string JSONText;
+  llvm::raw_string_ostream Stream(JSONText);
+  Stream << "[\n";
+  size_t MemoryBytes = MemoryMB * 1024 * 1024;
+  while (JSONText.size() < MemoryBytes) {
+    Stream << " {\n"
+           << "  \"key1\": \"" << std::string(ValueSize, '*') << "\",\n"
+           << "  \"key2\": \"" << std::string(ValueSize, '*') << "\",\n"
+           << "  \"key3\": \"" << std::string(ValueSize, '*') << "\"\n"
+           << " }";
+    Stream.flush();
+    if (JSONText.size() < MemoryBytes) Stream << ",";
+    Stream << "\n";
+  }
+  Stream << "]\n";
+  Stream.flush();
+  return JSONText;
+}
+
+int main(int argc, char **argv) {
+  llvm::cl::ParseCommandLineOptions(argc, argv);
+  if (Input.getNumOccurrences()) {
+    OwningPtr<MemoryBuffer> Buf;
+    if (MemoryBuffer::getFileOrSTDIN(Input, Buf))
+      return 1;
+
+    llvm::SourceMgr sm;
+    if (DumpTokens) {
+      yaml::Scanner s(Buf->getBuffer(), &sm);
+      dumpTokens(s);
+    }
+
+    if (DumpCanonical) {
+      yaml::Stream stream(Buf->getBuffer(), &sm);
+      dumpStream(stream);
+    }
+  }
+
+  if (Verify) {
+    llvm::TimerGroup Group("YAML parser benchmark");
+    benchmark(Group, "Fast", createJSONText(10, 500));
   }
 
   return 0;

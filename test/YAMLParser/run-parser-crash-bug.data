@@ -1,4 +1,4 @@
-# RUN: yaml-bench %s
+# RUN: yaml-bench -canonical %s
 
 ---
 - Harry Potter and the Prisoner of Azkaban

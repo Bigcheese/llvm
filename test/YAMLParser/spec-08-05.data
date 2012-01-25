@@ -1,4 +1,4 @@
-# RUN: yaml-bench %s
+# RUN: yaml-bench -canonical %s
 
 %TAG !o! tag:ben-kiki.org,2000:
 ---

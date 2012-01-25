@@ -1,4 +1,4 @@
-# RUN: yaml-bench %s
+# RUN: yaml-bench -canonical %s
 
 canonical: 12345
 decimal: +12,345

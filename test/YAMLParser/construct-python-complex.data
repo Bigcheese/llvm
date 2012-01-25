@@ -1,4 +1,4 @@
-# RUN: yaml-bench %s
+# RUN: yaml-bench -canonical %s
 
 - !!python/complex 0.5+0j
 - !!python/complex 0.5+0.5j

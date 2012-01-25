@@ -1,4 +1,4 @@
-# RUN: yaml-bench %s
+# RUN: yaml-bench -canonical %s
 
 canonical: 1.23015e+3
 exponential: 12.3015e+02

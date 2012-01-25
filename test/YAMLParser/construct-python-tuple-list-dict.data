@@ -1,4 +1,4 @@
-# RUN: yaml-bench %s
+# RUN: yaml-bench -canonical %s
 
 - !!python/list [1, 2, 3, 4]
 - !!python/tuple [1, 2, 3, 4]

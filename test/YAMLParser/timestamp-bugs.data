@@ -1,4 +1,4 @@
-# RUN: yaml-bench %s
+# RUN: yaml-bench -canonical %s
 
 - 2001-12-14 21:59:43.10 -5:30
 - 2001-12-14 21:59:43.10 +5:30

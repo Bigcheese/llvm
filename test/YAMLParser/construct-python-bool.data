@@ -1,3 +1,3 @@
-# RUN: yaml-bench %s
+# RUN: yaml-bench -canonical %s
 
 [ !!python/bool True, !!python/bool False ]

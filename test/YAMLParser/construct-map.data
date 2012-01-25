@@ -1,4 +1,4 @@
-# RUN: yaml-bench %s
+# RUN: yaml-bench -canonical %s
 
 # Unordered set of key: value pairs.
 Block style: !!map

@@ -1,4 +1,4 @@
-# RUN: yaml-bench %s
+# RUN: yaml-bench -canonical %s
 
   # Leading comment line spaces are
    # neither content nor indentation.
