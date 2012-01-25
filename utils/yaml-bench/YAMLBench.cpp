@@ -1293,12 +1293,13 @@ public:
       Token &t = peekNext();
       if (   t.Kind == Token::TK_BlockEnd
           || t.Kind == Token::TK_Key
+          || t.Kind == Token::TK_FlowEntry
           || t.Kind == Token::TK_Error) {
         return Value = new (getAllocator().Allocate<NullNode>()) NullNode(Doc);
       }
 
       if (t.Kind != Token::TK_Value) {
-        setError("Unexpected token in sequence", t);
+        setError("Unexpected token in Key Value.", t);
         return Value = new (getAllocator().Allocate<NullNode>()) NullNode(Doc);
       }
       getNext(); // skip TK_Value.
@@ -1373,6 +1374,11 @@ public:
 
     iterator &operator++() {
       assert(MN && "Attempted to advance iterator past end!");
+      if (MN->failed()) {
+        MN = 0;
+        CurrentEntry = 0;
+        return *this;
+      }
       if (CurrentEntry) {
         CurrentEntry->skip();
         if (MN->MType == MT_Inline) {
@@ -1477,6 +1483,11 @@ public:
 
     iterator &operator++() {
       assert(SN && "Attempted to advance iterator past end!");
+      if (SN->failed()) {
+        SN = 0;
+        CurrentEntry = 0;
+        return *this;
+      }
       if (CurrentEntry)
         CurrentEntry->skip();
       Token t = SN->peekNext();
