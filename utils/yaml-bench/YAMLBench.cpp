@@ -916,7 +916,7 @@ class Scanner {
     t.Scalar.Value = t.Range.substr(1);
     TokenQueue.push_back(t);
 
-    // Alias and anchors be simple keys.
+    // Alias and anchors can be simple keys.
     if (IsSimpleKeyAllowed) {
       SimpleKey SK;
       SK.Tok = &TokenQueue.back();
@@ -971,6 +971,7 @@ class Scanner {
 
   bool scanTag() {
     StringRef::iterator Start = Cur;
+    unsigned ColStart = Column;
     skip(1); // Eat !.
     if (Cur == End || isBlankOrBreak(Cur)); // An empty tag.
     else if (*Cur == '<') {
@@ -987,6 +988,20 @@ class Scanner {
     t.Kind = Token::TK_Tag;
     t.Range = StringRef(Start, Cur - Start);
     TokenQueue.push_back(t);
+
+    // Tags can be simple keys.
+    if (IsSimpleKeyAllowed) {
+      SimpleKey SK;
+      SK.Tok = &TokenQueue.back();
+      SK.Line = Line;
+      SK.Column = ColStart;
+      SK.IsRequired = false;
+      SK.FlowLevel = FlowLevel;
+      SimpleKeys.push_back(SK);
+    }
+
+    IsSimpleKeyAllowed = false;
+
     return true;
   }
 
