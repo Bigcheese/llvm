@@ -228,33 +228,97 @@ private:
     return Pos;
   }
 
+  /// @brief Scan ns-uri-char[39]s starting at Cur.
+  ///
+  /// This updates Cur and Column while scanning.
+  ///
+  /// @returns A StringRef starting at Cur which covers the longest contiguous
+  ///          sequence of ns-uri-char.
   StringRef scan_ns_uri_char();
+
+  /// @brief Scan ns-plain-one-line[133] starting at \a Cur.
   StringRef scan_ns_plain_one_line();
+
+  /// @brief Consume a minimal well-formed code unit subsequence starting at
+  ///        \a Cur. Return false if it is not the same Unicode scalar value as
+  ///        \a expected. This updates \a Column.
   bool consume(uint32_t expected);
+
+  /// @brief Skip \a Distance UTF-8 code units. Updates \a Cur and \a Column.
   void skip(uint32_t Distance);
+
+  /// @brief Return true if the minimal well-formed code unit subsequence at
+  ///        Pos is whitespace or a new line
   bool isBlankOrBreak(StringRef::iterator Pos);
+
+  /// @brief Remove simple keys that can no longer be valid simple keys.
+  ///
+  /// Invalid simple keys are not on the current line or are futher than 1024
+  /// columns back.
   void removeStaleSimpleKeys();
+
+  /// @brief Remove all simple keys on FlowLevel \a Level.
   void removeSimpleKeyOnFlowLevel(unsigned Level);
+
+  /// @brief Unroll indentation in \a Indents back to \a Col. Creates BlockEnd
+  ///        tokens if needed.
   bool unrollIndent(int Col);
+
+  /// @brief Increase indent to \a Col. Creates \a Kind token at \a InsertPoint
+  ///        if needed.
   bool rollIndent( int Col
                  , Token::TokenKind Kind
                  , std::deque<Token>::iterator InsertPoint);
+
+  /// @brief Skip whitespace and comments until the start of the next token.
   void scanToNextToken();
+
+  /// @brief Must be the first token generated.
   bool scanStreamStart();
+
+  /// @brief Generate tokens needed to close out the stream.
   bool scanStreamEnd();
+
+  /// @brief Scan a %BLAH directive.
   bool scanDirective();
+
+  /// @brief Scan a ... or ---.
   bool scanDocumentIndicator(bool IsStart);
+
+  /// @brief Scan a [ or { and generate the proper flow collection start token.
   bool scanFlowCollectionStart(bool IsSequence);
+
+  /// @brief Scan a ] or } and generate the proper flow collection end token.
   bool scanFlowCollectionEnd(bool IsSequence);
+
+  /// @brief Scan the , that separates entries in a flow collection.
   bool scanFlowEntry();
+
+  /// @brief Scan the - that starts block sequence entries.
   bool scanBlockEntry();
+
+  /// @brief Scan an explicit ? indicating a key.
   bool scanKey();
+
+  /// @brief Scan an explicit : indicating a value.
   bool scanValue();
+
+  /// @brief Scan a quoted scalar.
   bool scanFlowScalar(bool IsDoubleQuoted);
+
+  /// @brief Scan an unqoted scalar.
   bool scanPlainScalar();
+
+  /// @brief Scan an Alias or Anchor starting with * or &.
   bool scanAliasOrAnchor(bool IsAlias);
+
+  /// @brief Scan a block scalar starting with | or >.
   bool scanBlockScalar(bool IsLiteral);
+
+  /// @brief Scan a tag of the form !stuff.
   bool scanTag();
+
+  /// @brief Dispatch to the next scanning function based on \a *Cur.
   bool fetchMoreTokens();
 
   /// @brief The SourceMgr used for diagnostics and buffer management.
@@ -308,12 +372,15 @@ private:
 class document_iterator;
 class Document;
 
+/// @brief This class represents a YAML stream potentially containing multiple
+///        documents.
 class Stream {
   Scanner S;
   OwningPtr<Document> CurrentDoc;
 
   friend class Document;
 
+  /// @brief Validate a %YAML x.x directive.
   void handleYAMLDirective(const Token &t);
 
 public:
@@ -324,6 +391,7 @@ public:
   void skip();
 };
 
+/// @brief Abstract base class for all Nodes.
 class Node {
   unsigned int TypeID;
   StringRef Anchor;
@@ -344,11 +412,14 @@ public:
   Node(unsigned int Type, Document *D, StringRef A);
   virtual ~Node();
 
+  /// @brief Get the value of the anchor attached to this node. If it does not
+  ///        have one, getAnchor().size() will be 0.
   StringRef getAnchor() const { return Anchor; }
 
   unsigned int getType() const { return TypeID; }
   static inline bool classof(const Node *) { return true; }
 
+  // These functions forward to Document and Scanner.
   Token &peekNext();
   Token getNext();
   Node *parseBlockNode();
@@ -356,9 +427,10 @@ public:
   void setError(const Twine &Msg, Token &Tok);
   bool failed() const;
 
-  virtual void skip() {}
+  virtual void skip() {};
 };
 
+/// @brief A null value.
 class NullNode : public Node {
 public:
   NullNode(Document *D) : Node(NK_Null, D, StringRef()) {}
@@ -369,6 +441,8 @@ public:
   }
 };
 
+/// @brief A scalar node is an opaque datum that can be presented as a
+///        series of zero or more Unicode scalar values.
 class ScalarNode : public Node {
   StringRef Value;
 
@@ -389,6 +463,10 @@ public:
   }
 };
 
+/// @brief A key and value pair. While not technically a Node under the YAML
+///        representation graph, it is easier to treat them this way.
+///
+/// TODO: Consider making this not a child of Node.
 class KeyValueNode : public Node {
   Node *Key;
   Node *Value;
@@ -405,16 +483,26 @@ public:
     return n->getType() == NK_KeyValue;
   }
 
+  /// @brief Parse and return the key.
   Node *getKey();
+
+  /// @brief Parse and return the value.
   Node *getValue();
+
   virtual void skip() {
     getKey()->skip();
     getValue()->skip();
   }
 };
 
+/// @brief This is an iterator abstraction over YAML collections shared by both
+///        sequnces and maps.
+///
+/// BaseT must have a ValueT* member named CurrentEntry and a member function
+/// increment() which must set CurrentEntry to 0 to create an end iterator.
 template <class BaseT, class ValueT>
-class basic_collection_iterator {
+class basic_collection_iterator
+  : public std::iterator<std::forward_iterator_tag, ValueT> {
   BaseT *Base;
 
 public:
@@ -455,6 +543,9 @@ public:
   }
 };
 
+/// @brief Represents a YAML map created from either a block map for a flow map.
+///
+/// This parses the YAML stream as increment() is called.
 class MappingNode : public Node {
 public:
   enum Type {
@@ -468,6 +559,8 @@ private:
   bool IsAtBeginning;
   bool IsAtEnd;
   KeyValueNode *CurrentEntry;
+
+  void increment();
 
 public:
   MappingNode(Document *D, StringRef Anchor, Type T)
@@ -485,8 +578,6 @@ public:
 
   friend class basic_collection_iterator<MappingNode, KeyValueNode>;
   typedef basic_collection_iterator<MappingNode, KeyValueNode> iterator;
-
-  void increment();
 
   iterator begin() {
     assert(IsAtBeginning && "You may only iterate over a collection once!");
