@@ -370,17 +370,6 @@ class Scanner {
     return skip_nb_char(Pos);
   }
 
-  StringRef::iterator skip_nb_json(StringRef::iterator Pos) {
-    if (Pos == End)
-      return Pos;
-    if (*Pos == 0x09 || (*Pos >= 0x20 && uint8_t(*Pos) <= 0x7E))
-      return Pos + 1;
-    UTF8Decoded u8d = decodeUTF8(Pos);
-    if (u8d.second != 0 && u8d.first >= 0x80 && u8d.first <= 0x10FFFF)
-      return Pos + u8d.second;
-    return Pos;
-  }
-
   template<StringRef::iterator (Scanner::*Func)(StringRef::iterator)>
   StringRef::iterator skip_while(StringRef::iterator Pos) {
     while (true) {

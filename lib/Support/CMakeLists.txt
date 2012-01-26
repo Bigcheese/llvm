@@ -50,6 +50,7 @@ add_llvm_library(LLVMSupport
   ToolOutputFile.cpp
   Triple.cpp
   Twine.cpp
+  YAMLParser.cpp
   raw_os_ostream.cpp
   raw_ostream.cpp
   regcomp.c
