@@ -413,6 +413,48 @@ public:
   }
 };
 
+template <class BaseT, class ValueT>
+class basic_collection_iterator {
+  BaseT *Base;
+
+public:
+  basic_collection_iterator() : Base(0) {}
+  basic_collection_iterator(BaseT *B) : Base(B) {}
+
+  ValueT *operator ->() const {
+    assert(Base && Base->CurrentEntry && "Attempted to access end iterator!");
+    return Base->CurrentEntry;
+  }
+
+  ValueT &operator *() const {
+    assert(Base && Base->CurrentEntry &&
+           "Attempted to dereference end iterator!");
+    return *Base->CurrentEntry;
+  }
+
+  operator ValueT*() const {
+    assert(Base && Base->CurrentEntry && "Attempted to access end iterator!");
+    return Base->CurrentEntry;
+  }
+
+  bool operator !=(const basic_collection_iterator &Other) const {
+    if(Base != Other.Base)
+      return true;
+    if ((Base && Other.Base) && Base->CurrentEntry != Other.Base->CurrentEntry)
+      return true;
+    return false;
+  }
+
+  basic_collection_iterator &operator++() {
+    assert(Base && "Attempted to advance iterator past end!");
+    Base->increment();
+    // Create an end iterator.
+    if (Base->CurrentEntry == 0)
+      Base = 0;
+    return *this;
+  }
+};
+
 class MappingNode : public Node {
 public:
   enum Type {
@@ -425,6 +467,7 @@ private:
   Type MType;
   bool IsAtBeginning;
   bool IsAtEnd;
+  KeyValueNode *CurrentEntry;
 
 public:
   MappingNode(Document *D, StringRef Anchor, Type T)
@@ -432,6 +475,7 @@ public:
     , MType(T)
     , IsAtBeginning(true)
     , IsAtEnd(false)
+    , CurrentEntry(0)
   {}
 
   static inline bool classof(const MappingNode *) { return true; }
@@ -439,35 +483,10 @@ public:
     return n->getType() == NK_Mapping;
   }
 
-  class iterator {
-    MappingNode *MN;
-    KeyValueNode *CurrentEntry;
+  friend class basic_collection_iterator<MappingNode, KeyValueNode>;
+  typedef basic_collection_iterator<MappingNode, KeyValueNode> iterator;
 
-  public:
-    iterator() : MN(0), CurrentEntry(0) {}
-    iterator(MappingNode *mn) : MN(mn), CurrentEntry(0) {}
-
-    KeyValueNode *operator ->() const {
-      assert(CurrentEntry && "Attempted to access end iterator!");
-      return CurrentEntry;
-    }
-
-    KeyValueNode &operator *() const {
-      assert(CurrentEntry && "Attempted to dereference end iterator!");
-      return *CurrentEntry;
-    }
-
-    operator KeyValueNode*() const {
-      assert(CurrentEntry && "Attempted to access end iterator!");
-      return CurrentEntry;
-    }
-
-    bool operator !=(const iterator &Other) const {
-      return MN != Other.MN;
-    }
-
-    iterator &operator++();
-  };
+  void increment();
 
   iterator begin() {
     assert(IsAtBeginning && "You may only iterate over a collection once!");
@@ -500,49 +519,26 @@ private:
   Type SeqType;
   bool IsAtBeginning;
   bool IsAtEnd;
+  Node *CurrentEntry;
 
 public:
-  class iterator {
-    SequenceNode *SN;
-    Node *CurrentEntry;
-
-  public:
-    iterator() : SN(0), CurrentEntry(0) {}
-    iterator(SequenceNode *sn) : SN(sn), CurrentEntry(0) {}
-
-    Node *operator ->() const {
-      assert(CurrentEntry && "Attempted to access end iterator!");
-      return CurrentEntry;
-    }
-
-    Node &operator *() const {
-      assert(CurrentEntry && "Attempted to dereference end iterator!");
-      return *CurrentEntry;
-    }
-
-    operator Node*() const {
-      assert(CurrentEntry && "Attempted to access end iterator!");
-      return CurrentEntry;
-    }
-
-    bool operator !=(const iterator &Other) const {
-      return SN != Other.SN;
-    }
-
-    iterator &operator++();
-  };
-
   SequenceNode(Document *D, StringRef Anchor, Type T)
     : Node(NK_Sequence, D, Anchor)
     , SeqType(T)
     , IsAtBeginning(true)
     , IsAtEnd(false)
+    , CurrentEntry(0)
   {}
 
   static inline bool classof(const SequenceNode *) { return true; }
   static inline bool classof(const Node *n) {
     return n->getType() == NK_Sequence;
   }
+
+  friend class basic_collection_iterator<SequenceNode, Node>;
+  typedef basic_collection_iterator<SequenceNode, Node> iterator;
+
+  void increment();
 
   iterator begin() {
     assert(IsAtBeginning && "You may only iterate over a collection once!");

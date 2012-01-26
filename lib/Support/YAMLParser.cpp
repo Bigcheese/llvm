@@ -1101,147 +1101,129 @@ Node *KeyValueNode::getValue() {
   return Value = parseBlockNode();
 }
 
-MappingNode::iterator &MappingNode::iterator::operator++() {
-  assert(MN && "Attempted to advance iterator past end!");
-  if (MN->failed()) {
-    MN->IsAtEnd = true;
-    MN = 0;
+void MappingNode::increment() {
+  if (failed()) {
+    IsAtEnd = true;
     CurrentEntry = 0;
-    return *this;
+    return;
   }
   if (CurrentEntry) {
     CurrentEntry->skip();
-    if (MN->MType == MT_Inline) {
-      MN->IsAtEnd = true;
-      MN = 0;
+    if (MType == MT_Inline) {
+      IsAtEnd = true;
       CurrentEntry = 0;
-      return *this;
+      return;
     }
   }
-  Token t = MN->peekNext();
+  Token t = peekNext();
   if (t.Kind == Token::TK_Key || t.Kind == Token::TK_Scalar) {
     // KeyValueNode eats the TK_Key. That way it can detect null keys.
-    CurrentEntry = new (MN->getAllocator().Allocate<KeyValueNode>())
-      KeyValueNode(MN->Doc);
-  } else if (MN->MType == MT_Block) {
+    CurrentEntry = new (getAllocator().Allocate<KeyValueNode>())
+      KeyValueNode(Doc);
+  } else if (MType == MT_Block) {
     switch (t.Kind) {
     case Token::TK_BlockEnd:
-      MN->getNext();
-      MN->IsAtEnd = true;
-      MN = 0;
+      getNext();
+      IsAtEnd = true;
       CurrentEntry = 0;
       break;
     default:
-      MN->setError("Unexpected token. Expected Key or Block End", t);
+      setError("Unexpected token. Expected Key or Block End", t);
     case Token::TK_Error:
-      MN->IsAtEnd = true;
-      MN = 0;
+      IsAtEnd = true;
       CurrentEntry = 0;
     }
   } else {
     switch (t.Kind) {
     case Token::TK_FlowEntry:
       // Eat the flow entry and recurse.
-      MN->getNext();
-      return ++(*this);
+      getNext();
+      return increment();
     case Token::TK_FlowMappingEnd:
-      MN->getNext();
+      getNext();
     case Token::TK_Error:
       // Set this to end iterator.
-      MN->IsAtEnd = true;
-      MN = 0;
+      IsAtEnd = true;
       CurrentEntry = 0;
       break;
     default:
-      MN->setError( "Unexpected token. Expected Key, Flow Entry, or Flow "
-                    "Mapping End."
-                  , t);
-      MN->IsAtEnd = true;
-      MN = 0;
+      setError( "Unexpected token. Expected Key, Flow Entry, or Flow "
+                "Mapping End."
+              , t);
+      IsAtEnd = true;
       CurrentEntry = 0;
     }
   }
-  return *this;
 }
 
-SequenceNode::iterator &SequenceNode::iterator::operator++() {
-  assert(SN && "Attempted to advance iterator past end!");
-  if (SN->failed()) {
-    SN->IsAtEnd = true;
-    SN = 0;
+void SequenceNode::increment() {
+  if (failed()) {
+    IsAtEnd = true;
     CurrentEntry = 0;
-    return *this;
+    return;
   }
   if (CurrentEntry)
     CurrentEntry->skip();
-  Token t = SN->peekNext();
-  if (SN->SeqType == ST_Block) {
+  Token t = peekNext();
+  if (SeqType == ST_Block) {
     switch (t.Kind) {
     case Token::TK_BlockEntry:
-      SN->getNext();
-      CurrentEntry = SN->parseBlockNode();
+      getNext();
+      CurrentEntry = parseBlockNode();
       if (CurrentEntry == 0) { // An error occured.
-        SN->IsAtEnd = true;
-        SN = 0;
+        IsAtEnd = true;
         CurrentEntry = 0;
       }
       break;
     case Token::TK_BlockEnd:
-      SN->getNext();
-      SN->IsAtEnd = true;
-      SN = 0;
+      getNext();
+      IsAtEnd = true;
       CurrentEntry = 0;
       break;
     default:
-      SN->setError( "Unexpected token. Expected Block Entry or Block End."
-                  , t);
+      setError( "Unexpected token. Expected Block Entry or Block End."
+              , t);
     case Token::TK_Error:
-      SN->IsAtEnd = true;
-      SN = 0;
+      IsAtEnd = true;
       CurrentEntry = 0;
     }
-  } else if (SN->SeqType == ST_Indentless) {
+  } else if (SeqType == ST_Indentless) {
     switch (t.Kind) {
     case Token::TK_BlockEntry:
-      SN->getNext();
-      CurrentEntry = SN->parseBlockNode();
+      getNext();
+      CurrentEntry = parseBlockNode();
       if (CurrentEntry == 0) { // An error occured.
-        SN->IsAtEnd = true;
-        SN = 0;
+        IsAtEnd = true;
         CurrentEntry = 0;
       }
       break;
     default:
     case Token::TK_Error:
-      SN->IsAtEnd = true;
-      SN = 0;
+      IsAtEnd = true;
       CurrentEntry = 0;
     }
-  } else if (SN->SeqType == ST_Flow) {
+  } else if (SeqType == ST_Flow) {
     switch (t.Kind) {
     case Token::TK_FlowEntry:
       // Eat the flow entry and recurse.
-      SN->getNext();
-      return ++(*this);
+      getNext();
+      return increment();
     case Token::TK_FlowSequenceEnd:
-      SN->getNext();
+      getNext();
     case Token::TK_Error:
       // Set this to end iterator.
-      SN->IsAtEnd = true;
-      SN = 0;
+      IsAtEnd = true;
       CurrentEntry = 0;
       break;
     default:
       // Otherwise it must be a flow entry.
-      CurrentEntry = SN->parseBlockNode();
+      CurrentEntry = parseBlockNode();
       if (!CurrentEntry) {
-        SN->IsAtEnd = true;
-        SN = 0;
+        IsAtEnd = true;
       }
       break;
     }
   }
-  return *this;
 }
 
 Node *Document::parseBlockNode() {
