@@ -23,9 +23,12 @@
 #ifndef LLVM_SUPPORT_YAML_PARSER_H
 #define LLVM_SUPPORT_YAML_PARSER_H
 
+#include "llvm/ADT/OwningPtr.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/ADT/Twine.h"
+#include "llvm/Support/Allocator.h"
+#include "llvm/Support/Casting.h"
 #include "llvm/Support/SourceMgr.h"
 
 #include <deque>
@@ -38,12 +41,12 @@ class SourceMgr;
 namespace yaml {
 
 enum UnicodeEncodingForm {
-  UET_UTF32_LE,
-  UET_UTF32_BE,
-  UET_UTF16_LE,
-  UET_UTF16_BE,
-  UET_UTF8,     //< UTF-8 or ascii.
-  UET_Unknown   //< Not a valid Unicode file.
+  UEF_UTF32_LE,
+  UEF_UTF32_BE,
+  UEF_UTF16_LE,
+  UEF_UTF16_BE,
+  UEF_UTF8,     //< UTF-8 or ascii.
+  UEF_Unknown   //< Not a valid Unicode file.
 };
 
 /// EncodingInfo - Holds the encoding type and length of the byte order mark if
@@ -258,7 +261,7 @@ private:
   SourceMgr &SM;
 
   /// @brief The origional input.
-  MemoryBuffer &InputBuffer;
+  MemoryBuffer *InputBuffer;
 
   /// @brief The current position of the scanner.
   StringRef::iterator Cur;
@@ -300,6 +303,394 @@ private:
 
   /// @brief Potential simple keys.
   SmallVector<SimpleKey, 4> SimpleKeys;
+};
+
+class document_iterator;
+class Document;
+
+class Stream {
+  Scanner S;
+  OwningPtr<Document> CurrentDoc;
+
+  friend class Document;
+
+  void handleYAMLDirective(const Token &t);
+
+public:
+  Stream(StringRef input, SourceMgr &sm);
+
+  document_iterator begin();
+  document_iterator end();
+  void skip();
+};
+
+class Node {
+  unsigned int TypeID;
+  StringRef Anchor;
+
+protected:
+  Document *Doc;
+
+public:
+  enum NodeKind {
+    NK_Null,
+    NK_Scalar,
+    NK_KeyValue,
+    NK_Mapping,
+    NK_Sequence,
+    NK_Alias
+  };
+
+  Node(unsigned int Type, Document *D, StringRef A);
+  virtual ~Node();
+
+  StringRef getAnchor() const { return Anchor; }
+
+  unsigned int getType() const { return TypeID; }
+  static inline bool classof(const Node *) { return true; }
+
+  Token &peekNext();
+  Token getNext();
+  Node *parseBlockNode();
+  BumpPtrAllocator &getAllocator();
+  void setError(const Twine &Msg, Token &Tok);
+  bool failed() const;
+
+  virtual void skip() {}
+};
+
+class NullNode : public Node {
+public:
+  NullNode(Document *D) : Node(NK_Null, D, StringRef()) {}
+
+  static inline bool classof(const NullNode *) { return true; }
+  static inline bool classof(const Node *n) {
+    return n->getType() == NK_Null;
+  }
+};
+
+class ScalarNode : public Node {
+  StringRef Value;
+
+public:
+  ScalarNode(Document *D, StringRef Anchor, StringRef Val)
+    : Node(NK_Scalar, D, Anchor)
+    , Value(Val)
+  {}
+
+  // Return Value without any escaping or folding or other fun YAML stuff. This
+  // is the exact bytes that are contained in the file (after converstion to
+  // utf8).
+  StringRef getRawValue() const { return Value; }
+
+  static inline bool classof(const ScalarNode *) { return true; }
+  static inline bool classof(const Node *n) {
+    return n->getType() == NK_Scalar;
+  }
+};
+
+class KeyValueNode : public Node {
+  Node *Key;
+  Node *Value;
+
+public:
+  KeyValueNode(Document *D)
+    : Node(NK_KeyValue, D, StringRef())
+    , Key(0)
+    , Value(0)
+  {}
+
+  static inline bool classof(const KeyValueNode *) { return true; }
+  static inline bool classof(const Node *n) {
+    return n->getType() == NK_KeyValue;
+  }
+
+  Node *getKey();
+  Node *getValue();
+  virtual void skip() {
+    getKey()->skip();
+    getValue()->skip();
+  }
+};
+
+class MappingNode : public Node {
+public:
+  enum Type {
+    MT_Block,
+    MT_Flow,
+    MT_Inline //< An inline mapping node is used for "[key: value]".
+  };
+
+private:
+  Type MType;
+  bool IsAtBeginning;
+  bool IsAtEnd;
+
+public:
+  MappingNode(Document *D, StringRef Anchor, Type T)
+    : Node(NK_Mapping, D, Anchor)
+    , MType(T)
+    , IsAtBeginning(true)
+    , IsAtEnd(false)
+  {}
+
+  static inline bool classof(const MappingNode *) { return true; }
+  static inline bool classof(const Node *n) {
+    return n->getType() == NK_Mapping;
+  }
+
+  class iterator {
+    MappingNode *MN;
+    KeyValueNode *CurrentEntry;
+
+  public:
+    iterator() : MN(0), CurrentEntry(0) {}
+    iterator(MappingNode *mn) : MN(mn), CurrentEntry(0) {}
+
+    KeyValueNode *operator ->() const {
+      assert(CurrentEntry && "Attempted to access end iterator!");
+      return CurrentEntry;
+    }
+
+    KeyValueNode &operator *() const {
+      assert(CurrentEntry && "Attempted to dereference end iterator!");
+      return *CurrentEntry;
+    }
+
+    operator KeyValueNode*() const {
+      assert(CurrentEntry && "Attempted to access end iterator!");
+      return CurrentEntry;
+    }
+
+    bool operator !=(const iterator &Other) const {
+      return MN != Other.MN;
+    }
+
+    iterator &operator++();
+  };
+
+  iterator begin() {
+    assert(IsAtBeginning && "You may only iterate over a collection once!");
+    IsAtBeginning = false;
+    iterator ret(this);
+    ++ret;
+    return ret;
+  }
+
+  iterator end() { return iterator(); }
+
+  virtual void skip() {
+    // TODO: support skipping from the middle of a parsed map ;/
+    assert((IsAtBeginning || IsAtEnd) && "Cannot skip mid parse!");
+    if (IsAtBeginning)
+      for (iterator i = begin(), e = end(); i != e; ++i)
+        i->skip();
+  }
+};
+
+class SequenceNode : public Node {
+public:
+  enum Type {
+    ST_Block,
+    ST_Flow,
+    ST_Indentless
+  };
+
+private:
+  Type SeqType;
+  bool IsAtBeginning;
+  bool IsAtEnd;
+
+public:
+  class iterator {
+    SequenceNode *SN;
+    Node *CurrentEntry;
+
+  public:
+    iterator() : SN(0), CurrentEntry(0) {}
+    iterator(SequenceNode *sn) : SN(sn), CurrentEntry(0) {}
+
+    Node *operator ->() const {
+      assert(CurrentEntry && "Attempted to access end iterator!");
+      return CurrentEntry;
+    }
+
+    Node &operator *() const {
+      assert(CurrentEntry && "Attempted to dereference end iterator!");
+      return *CurrentEntry;
+    }
+
+    operator Node*() const {
+      assert(CurrentEntry && "Attempted to access end iterator!");
+      return CurrentEntry;
+    }
+
+    bool operator !=(const iterator &Other) const {
+      return SN != Other.SN;
+    }
+
+    iterator &operator++();
+  };
+
+  SequenceNode(Document *D, StringRef Anchor, Type T)
+    : Node(NK_Sequence, D, Anchor)
+    , SeqType(T)
+    , IsAtBeginning(true)
+    , IsAtEnd(false)
+  {}
+
+  static inline bool classof(const SequenceNode *) { return true; }
+  static inline bool classof(const Node *n) {
+    return n->getType() == NK_Sequence;
+  }
+
+  iterator begin() {
+    assert(IsAtBeginning && "You may only iterate over a collection once!");
+    IsAtBeginning = false;
+    iterator ret(this);
+    ++ret;
+    return ret;
+  }
+
+  iterator end() { return iterator(); }
+
+  virtual void skip() {
+    // TODO: support skipping from the middle of a parsed sequence ;/
+    assert((IsAtBeginning || IsAtEnd) && "Cannot skip mid parse!");
+    if (IsAtBeginning)
+      for (iterator i = begin(), e = end(); i != e; ++i)
+        i->skip();
+  }
+};
+
+class AliasNode : public Node {
+  StringRef Name;
+
+public:
+  AliasNode(Document *D, StringRef Val)
+    : Node(NK_Alias, D, StringRef()), Name(Val) {}
+
+  StringRef getName() const { return Name; }
+  Node *getTarget();
+
+  static inline bool classof(const ScalarNode *) { return true; }
+  static inline bool classof(const Node *n) {
+    return n->getType() == NK_Alias;
+  }
+};
+
+class Document {
+  friend class Node;
+  friend class document_iterator;
+
+  Stream &S;
+  BumpPtrAllocator NodeAllocator;
+  Node *Root;
+
+  Token &peekNext() {
+    return S.S.peekNext();
+  }
+
+  Token getNext() {
+    return S.S.getNext();
+  }
+
+  void setError(const Twine &Msg, Token &Tok) {
+    S.S.setError(Msg, Tok.Range.begin());
+  }
+
+  bool failed() const {
+    return S.S.failed();
+  }
+
+  void handleTagDirective(const Token &t) {
+
+  }
+
+  bool parseDirectives() {
+    bool dir = false;
+    while (true) {
+      Token t = peekNext();
+      if (t.Kind == Token::TK_TagDirective) {
+        handleTagDirective(getNext());
+        dir = true;
+      } else if (t.Kind == Token::TK_VersionDirective) {
+        S.handleYAMLDirective(getNext());
+        dir = true;
+      } else
+        break;
+    }
+    return dir;
+  }
+
+  bool expectToken(Token::TokenKind TK) {
+    Token t = getNext();
+    if (t.Kind != TK) {
+      setError("Unexpected token", t);
+      return false;
+    }
+    return true;
+  }
+
+public:
+  Node *parseBlockNode();
+
+  Document(Stream &s) : S(s), Root(0) {
+    if (parseDirectives())
+      expectToken(Token::TK_DocumentStart);
+    Token &t = peekNext();
+    if (t.Kind == Token::TK_DocumentStart)
+      getNext();
+  }
+
+  /// Finish parsing the current document and return true if there are more.
+  /// Return false otherwise.
+  bool skip() {
+    if (S.S.failed())
+      return false;
+    if (!Root)
+      getRoot();
+    Root->skip();
+    Token &t = peekNext();
+    if (t.Kind == Token::TK_StreamEnd)
+      return false;
+    if (t.Kind == Token::TK_DocumentEnd) {
+      getNext();
+      return skip();
+    }
+    return true;
+  }
+
+  Node *getRoot() {
+    assert(!Root && "getRoot may only be called once per document!");
+    return Root = parseBlockNode();
+  }
+};
+
+class document_iterator {
+  Document *Doc;
+
+public:
+  document_iterator() : Doc(0) {}
+  document_iterator(Document *d) : Doc(d) {}
+
+  bool operator !=(const document_iterator &other) {
+    return Doc != other.Doc;
+  }
+
+  document_iterator operator ++() {
+    if (!Doc->skip())
+      Doc = 0;
+    else {
+      Doc->~Document();
+      new (Doc) Document(Doc->S);
+    }
+    return *this;
+  }
+
+  Document *operator ->() {
+    return Doc;
+  }
 };
 
 }
