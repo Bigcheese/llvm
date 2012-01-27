@@ -1,8 +1,4 @@
 # RUN: yaml-bench -canonical %s
-#
-# Fixing this will require reworking how the token
-# queue and
-# XFAIL: *
 
 { first: Sammy, last: Sosa }:
 # Statistics:

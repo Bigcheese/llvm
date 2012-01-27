@@ -102,7 +102,7 @@ Token &Scanner::peekNext() {
 
     removeStaleSimpleKeys();
     SimpleKey SK;
-    SK.Tok = &TokenQueue.front();
+    SK.Tok = TokenQueue.front();
     if (std::find(SimpleKeys.begin(), SimpleKeys.end(), SK)
         == SimpleKeys.end())
       break;
@@ -342,6 +342,20 @@ bool Scanner::isBlankOrBreak(StringRef::iterator Pos) {
   return false;
 }
 
+void Scanner::saveSimpleKey( TokenQueueT::iterator Tok
+                           , unsigned Col
+                           , bool IsRequired) {
+  if (IsSimpleKeyAllowed) {
+    SimpleKey SK;
+    SK.Tok = Tok;
+    SK.Line = Line;
+    SK.Column = Col;
+    SK.IsRequired = IsRequired;
+    SK.FlowLevel = FlowLevel;
+    SimpleKeys.push_back(SK);
+  }
+}
+
 void Scanner::removeStaleSimpleKeys() {
   for (SmallVectorImpl<SimpleKey>::iterator i = SimpleKeys.begin();
                                             i != SimpleKeys.end();) {
@@ -378,7 +392,7 @@ bool Scanner::unrollIndent(int Col) {
 
 bool Scanner::rollIndent( int Col
                         , Token::TokenKind Kind
-                        , std::deque<Token>::iterator InsertPoint) {
+                        , TokenQueueT::iterator InsertPoint) {
   if (FlowLevel)
     return true;
   if (Indent < Col) {
@@ -505,15 +519,7 @@ bool Scanner::scanFlowCollectionStart(bool IsSequence) {
   TokenQueue.push_back(t);
 
   // [ and { may begin a simple key.
-  if (IsSimpleKeyAllowed) {
-    SimpleKey SK;
-    SK.Tok = &TokenQueue.back();
-    SK.Line = Line;
-    SK.Column = Column - 1;
-    SK.IsRequired = false;
-    SK.FlowLevel = FlowLevel;
-    SimpleKeys.push_back(SK);
-  }
+  saveSimpleKey(TokenQueue.back(), Column - 1, false);
 
   // And may also be followed by a simple key.
   IsSimpleKeyAllowed = true;
@@ -581,9 +587,9 @@ bool Scanner::scanValue() {
     Token t;
     t.Kind = Token::TK_Key;
     t.Range = SK.Tok->Range;
-    std::deque<Token>::iterator i, e;
+    TokenQueueT::iterator i, e;
     for (i = TokenQueue.begin(), e = TokenQueue.end(); i != e; ++i) {
-      if (&(*i) == SK.Tok)
+      if (i == SK.Tok)
         break;
     }
     assert(i != e && "SimpleKey not in token queue!");
@@ -592,9 +598,6 @@ bool Scanner::scanValue() {
     // We may also need to add a Block-Mapping-Start token.
     rollIndent(SK.Column, Token::TK_BlockMappingStart, i);
 
-    // FIXME: This clear is here because the above invalidates all the
-    //        deque<Token>::iterators.
-    SimpleKeys.clear();
     IsSimpleKeyAllowed = false;
   } else {
     if (!FlowLevel)
@@ -673,15 +676,7 @@ bool Scanner::scanFlowScalar(bool IsDoubleQuoted) {
   t.Scalar.Value = Value;
   TokenQueue.push_back(t);
 
-  if (IsSimpleKeyAllowed) {
-    SimpleKey SK;
-    SK.Tok = &TokenQueue.back();
-    SK.Line = Line;
-    SK.Column = ColStart;
-    SK.IsRequired = false;
-    SK.FlowLevel = FlowLevel;
-    SimpleKeys.push_back(SK);
-  }
+  saveSimpleKey(TokenQueue.back(), ColStart, false);
 
   IsSimpleKeyAllowed = false;
 
@@ -759,15 +754,7 @@ bool Scanner::scanPlainScalar() {
   TokenQueue.push_back(t);
 
   // Plain scalars can be simple keys.
-  if (IsSimpleKeyAllowed) {
-    SimpleKey SK;
-    SK.Tok = &TokenQueue.back();
-    SK.Line = Line;
-    SK.Column = ColStart;
-    SK.IsRequired = false;
-    SK.FlowLevel = FlowLevel;
-    SimpleKeys.push_back(SK);
-  }
+  saveSimpleKey(TokenQueue.back(), ColStart, false);
 
   IsSimpleKeyAllowed = false;
 
@@ -803,15 +790,7 @@ bool Scanner::scanAliasOrAnchor(bool IsAlias) {
   TokenQueue.push_back(t);
 
   // Alias and anchors can be simple keys.
-  if (IsSimpleKeyAllowed) {
-    SimpleKey SK;
-    SK.Tok = &TokenQueue.back();
-    SK.Line = Line;
-    SK.Column = ColStart;
-    SK.IsRequired = false;
-    SK.FlowLevel = FlowLevel;
-    SimpleKeys.push_back(SK);
-  }
+  saveSimpleKey(TokenQueue.back(), ColStart, false);
 
   IsSimpleKeyAllowed = false;
 
@@ -876,15 +855,7 @@ bool Scanner::scanTag() {
   TokenQueue.push_back(t);
 
   // Tags can be simple keys.
-  if (IsSimpleKeyAllowed) {
-    SimpleKey SK;
-    SK.Tok = &TokenQueue.back();
-    SK.Line = Line;
-    SK.Column = ColStart;
-    SK.IsRequired = false;
-    SK.FlowLevel = FlowLevel;
-    SimpleKeys.push_back(SK);
-  }
+  saveSimpleKey(TokenQueue.back(), ColStart, false);
 
   IsSimpleKeyAllowed = false;
 

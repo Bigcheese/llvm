@@ -12,7 +12,6 @@
 //  See http://www.yaml.org/spec/1.2/spec.html for the full standard.
 //
 //  This currently does not implement the following:
-//    * Nested simple keys "{a: 1}: b".
 //    * Multi-line literal folding.
 //    * Tag resolution.
 //    * UTF-16.
@@ -23,6 +22,8 @@
 #ifndef LLVM_SUPPORT_YAML_PARSER_H
 #define LLVM_SUPPORT_YAML_PARSER_H
 
+#include "llvm/ADT/ilist.h"
+#include "llvm/ADT/ilist_node.h"
 #include "llvm/ADT/OwningPtr.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
@@ -31,7 +32,6 @@
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/SourceMgr.h"
 
-#include <deque>
 #include <utility>
 
 namespace llvm {
@@ -74,7 +74,7 @@ struct ScalarInfo {
 };
 
 /// Token - A single YAML token.
-struct Token {
+struct Token : ilist_node<Token> {
   enum TokenKind {
     TK_Error, // Uninitialized token.
     TK_StreamStart,
@@ -113,16 +113,23 @@ struct Token {
   Token() : Kind(TK_Error) {}
 };
 
+typedef ilist<Token> TokenQueueT;
+
+/// @brief This struct is used to track simple keys.
+///
+/// Simple keys are handled by creating an entry in SimpleKeys for each Token
+/// which could legally be the start of a simple key. When peekNext is called,
+/// if the Token to be returned is referenced by a SimpleKey, we continue
+/// tokenizing until that potential simple key has either been found to not be
+/// a simple key (we moved on to the next line or went further than 1024 chars).
+/// Or when we run into a Value, and then insert a Key token (and possibly
+/// others) before the SimpleKey's Tok.
 struct SimpleKey {
-  const Token *Tok;
+  TokenQueueT::iterator Tok;
   unsigned Column;
   unsigned Line;
   unsigned FlowLevel;
   bool IsRequired;
-
-  bool operator <(const SimpleKey &Other) {
-    return Tok <  Other.Tok;
-  }
 
   bool operator ==(const SimpleKey &Other) {
     return Tok == Other.Tok;
@@ -253,6 +260,9 @@ private:
   ///        Pos is whitespace or a new line
   bool isBlankOrBreak(StringRef::iterator Pos);
 
+  /// @brief If IsSimpleKeyAllowed, create and push_back a new SimpleKey.
+  void saveSimpleKey(TokenQueueT::iterator Tok, unsigned Col, bool IsRequired);
+
   /// @brief Remove simple keys that can no longer be valid simple keys.
   ///
   /// Invalid simple keys are not on the current line or are futher than 1024
@@ -270,7 +280,7 @@ private:
   ///        if needed.
   bool rollIndent( int Col
                  , Token::TokenKind Kind
-                 , std::deque<Token>::iterator InsertPoint);
+                 , TokenQueueT::iterator InsertPoint);
 
   /// @brief Skip whitespace and comments until the start of the next token.
   void scanToNextToken();
@@ -362,7 +372,7 @@ private:
   /// @brief Queue of tokens. This is required to queue up tokens while looking
   ///        for the end of a simple key. And for cases where a single character
   ///        can produce multiple tokens (e.g. BlockEnd).
-  std::deque<Token> TokenQueue;
+  TokenQueueT TokenQueue;
 
   /// @brief Indentation levels.
   SmallVector<int, 4> Indents;
