@@ -16,7 +16,7 @@
 //    * Multi-line literal folding.
 //    * Tag resolution.
 //    * UTF-16.
-//    * BOMs anywhere other than the first code point in the file.
+//    * BOMs anywhere other than the first Unicode scalar value in the file.
 //
 //===----------------------------------------------------------------------===//
 
