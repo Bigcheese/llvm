@@ -104,6 +104,8 @@ struct Token {
   /// of the token in the input.
   StringRef Range;
 
+  /// TODO: Stick these into a union. They currently aren't because StringRef
+  ///       can't be in a union in C++03.
   StreamStartInfo StreamStart;
   VersionDirectiveInfo VersionDirective;
   ScalarInfo Scalar;
@@ -598,11 +600,22 @@ public:
   }
 };
 
+/// @brief Represents a YAML sequence created from either a block sequence for a
+///        flow sequence.
+///
+/// This parses the YAML stream as increment() is called.
 class SequenceNode : public Node {
 public:
   enum Type {
     ST_Block,
     ST_Flow,
+    // Use for:
+    //
+    // key:
+    // - val1
+    // - val2
+    //
+    // As a BlockMappingEntry and BlockEnd are not created in this case.
     ST_Indentless
   };
 
@@ -650,6 +663,7 @@ public:
   }
 };
 
+/// @breif Represents an alias to a Node with an anchor.
 class AliasNode : public Node {
   StringRef Name;
 
@@ -666,12 +680,21 @@ public:
   }
 };
 
+/// @brief A YAML Stream is a sequence of Documents. A document contains a root
+///        node.
 class Document {
   friend class Node;
   friend class document_iterator;
 
+  /// @brief Stream to read tokens from.
   Stream &S;
+
+  /// @brief Used to allocate nodes to. All are destroyed without calling their
+  ///        destructor when the document is destroyed.
   BumpPtrAllocator NodeAllocator;
+
+  /// @brief The root node. Used to support skipping a partially parsed
+  ///        document.
   Node *Root;
 
   Token &peekNext() {
@@ -694,6 +717,7 @@ class Document {
 
   }
 
+  /// @brief Parse %BLAH directives and return true if any were encountered.
   bool parseDirectives() {
     bool dir = false;
     while (true) {
@@ -710,6 +734,7 @@ class Document {
     return dir;
   }
 
+  /// @brief Consume the next token and error if it is not \a TK.
   bool expectToken(Token::TokenKind TK) {
     Token t = getNext();
     if (t.Kind != TK) {
@@ -720,6 +745,7 @@ class Document {
   }
 
 public:
+  /// @brief Root for parsing a node. Returns a single node.
   Node *parseBlockNode();
 
   Document(Stream &s) : S(s), Root(0) {
@@ -730,8 +756,8 @@ public:
       getNext();
   }
 
-  /// Finish parsing the current document and return true if there are more.
-  /// Return false otherwise.
+  /// @brief Finish parsing the current document and return true if there are
+  ///        more. Return false otherwise.
   bool skip() {
     if (S.S.failed())
       return false;
@@ -748,12 +774,15 @@ public:
     return true;
   }
 
+  /// @brief Parse and return the root level node.
   Node *getRoot() {
-    assert(!Root && "getRoot may only be called once per document!");
+    if (Root)
+      return Root;
     return Root = parseBlockNode();
   }
 };
 
+/// @brief Iterator abstraction for Documents over a Stream.
 class document_iterator {
   Document *Doc;
 
@@ -769,6 +798,7 @@ public:
     if (!Doc->skip())
       Doc = 0;
     else {
+      // Inplace destruct and new are used here to avoid an unneeded allocation.
       Doc->~Document();
       new (Doc) Document(Doc->S);
     }
