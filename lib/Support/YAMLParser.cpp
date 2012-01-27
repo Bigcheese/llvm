@@ -409,7 +409,7 @@ bool Scanner::rollIndent( int Col
 
 void Scanner::scanToNextToken() {
   while (true) {
-    while (*Cur == ' ') {
+    while (*Cur == ' ' || *Cur == '\t') {
       skip(1);
     }
 
@@ -1178,6 +1178,7 @@ void SequenceNode::increment() {
     case Token::TK_FlowEntry:
       // Eat the flow entry and recurse.
       getNext();
+      WasPreviousTokenFlowEntry = true;
       return increment();
     case Token::TK_FlowSequenceEnd:
       getNext();
@@ -1186,12 +1187,27 @@ void SequenceNode::increment() {
       IsAtEnd = true;
       CurrentEntry = 0;
       break;
+    case Token::TK_StreamEnd:
+    case Token::TK_DocumentEnd:
+    case Token::TK_DocumentStart:
+      setError("Could not find closing ]!", t);
+      // Set this to end iterator.
+      IsAtEnd = true;
+      CurrentEntry = 0;
+      break;
     default:
+      if (!WasPreviousTokenFlowEntry) {
+        setError("Expected , between entries!", t);
+        IsAtEnd = true;
+        CurrentEntry = 0;
+        break;
+      }
       // Otherwise it must be a flow entry.
       CurrentEntry = parseBlockNode();
       if (!CurrentEntry) {
         IsAtEnd = true;
       }
+      WasPreviousTokenFlowEntry = false;
       break;
     }
   }

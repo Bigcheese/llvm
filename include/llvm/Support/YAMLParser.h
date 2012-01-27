@@ -153,6 +153,9 @@ public:
   }
 
   void setError(const Twine &Msg, StringRef::iterator Pos) {
+    if (Pos >= End)
+      Pos = End - 1;
+
     // Don't print out more errors after the first one we encounter. The rest
     // are just the result of the first, and have no meaning.
     if (!Failed)
@@ -401,6 +404,11 @@ public:
   document_iterator begin();
   document_iterator end();
   void skip();
+  bool failed() { return S.failed(); }
+  bool validate() {
+    skip();
+    return !failed();
+  }
 };
 
 /// @brief Abstract base class for all Nodes.
@@ -633,6 +641,7 @@ private:
   Type SeqType;
   bool IsAtBeginning;
   bool IsAtEnd;
+  bool WasPreviousTokenFlowEntry;
   Node *CurrentEntry;
 
 public:
@@ -641,6 +650,7 @@ public:
     , SeqType(T)
     , IsAtBeginning(true)
     , IsAtEnd(false)
+    , WasPreviousTokenFlowEntry(true) // Start with an imaginary ','.
     , CurrentEntry(0)
   {}
 

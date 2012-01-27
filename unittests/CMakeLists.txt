@@ -147,4 +147,5 @@ add_llvm_unittest(Support
   Support/TimeValue.cpp
   Support/TypeBuilderTest.cpp
   Support/ValueHandleTest.cpp
+  Support/YAMLParserTest.cpp
   )
