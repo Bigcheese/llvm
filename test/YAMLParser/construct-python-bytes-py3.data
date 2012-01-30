@@ -1,0 +1,3 @@
+# RUN: yaml-bench -canonical %s
+
+--- !!python/bytes 'c29tZSBiaW5hcnkgZGF0YQ=='
