@@ -13,13 +13,41 @@
 
 #include "llvm/Support/YAMLParser.h"
 
+#include "llvm/ADT/ilist.h"
+#include "llvm/ADT/ilist_node.h"
+#include "llvm/ADT/SmallVector.h"
+#include "llvm/ADT/Twine.h"
 #include "llvm/Support/ErrorHandling.h"
 #include "llvm/Support/MemoryBuffer.h"
+#include "llvm/Support/raw_ostream.h"
+#include "llvm/Support/SourceMgr.h"
 
 using namespace llvm;
 using namespace yaml;
 
-EncodingInfo llvm::yaml::getUnicodeEncoding(StringRef input) {
+namespace llvm {
+namespace yaml {
+
+enum UnicodeEncodingForm {
+  UEF_UTF32_LE, //< UTF-32 Little Endian
+  UEF_UTF32_BE, //< UTF-32 Big Endian
+  UEF_UTF16_LE, //< UTF-16 Little Endian
+  UEF_UTF16_BE, //< UTF-16 Big Endian
+  UEF_UTF8,     //< UTF-8 or ascii.
+  UEF_Unknown   //< Not a valid Unicode encoding.
+};
+
+/// EncodingInfo - Holds the encoding type and length of the byte order mark if
+///                it exists. Length is in {0, 2, 3, 4}.
+typedef std::pair<UnicodeEncodingForm, unsigned> EncodingInfo;
+
+/// getBOM - Reads up to the first 4 bytes to determine the Unicode encoding
+///          form of \a input.
+///
+/// @param input A string of length 0 or more.
+/// @returns An EncodingInfo indicating the Unicode encoding form of the input
+///          and how long the byte order mark is if one exists.
+EncodingInfo getUnicodeEncoding(StringRef input) {
   if (input.size() == 0)
     return std::make_pair(UEF_Unknown, 0);
 
@@ -69,6 +97,464 @@ EncodingInfo llvm::yaml::getUnicodeEncoding(StringRef input) {
   return std::make_pair(UEF_UTF8, 0);
 }
 
+struct StreamStartInfo {
+  UnicodeEncodingForm Encoding;
+};
+
+struct VersionDirectiveInfo {
+  StringRef Value;
+};
+
+struct ScalarInfo {
+  StringRef Value;
+};
+
+/// Token - A single YAML token.
+struct Token : ilist_node<Token> {
+  enum TokenKind {
+    TK_Error, // Uninitialized token.
+    TK_StreamStart,
+    TK_StreamEnd,
+    TK_VersionDirective,
+    TK_TagDirective,
+    TK_DocumentStart,
+    TK_DocumentEnd,
+    TK_BlockEntry,
+    TK_BlockEnd,
+    TK_BlockSequenceStart,
+    TK_BlockMappingStart,
+    TK_FlowEntry,
+    TK_FlowSequenceStart,
+    TK_FlowSequenceEnd,
+    TK_FlowMappingStart,
+    TK_FlowMappingEnd,
+    TK_Key,
+    TK_Value,
+    TK_Scalar,
+    TK_Alias,
+    TK_Anchor,
+    TK_Tag
+  } Kind;
+
+  /// A string of length 0 or more whose begin() points to the logical location
+  /// of the token in the input.
+  StringRef Range;
+
+  /// TODO: Stick these into a union. They currently aren't because StringRef
+  ///       can't be in a union in C++03.
+  StreamStartInfo StreamStart;
+  VersionDirectiveInfo VersionDirective;
+  ScalarInfo Scalar;
+
+  Token() : Kind(TK_Error) {}
+};
+
+}
+
+template<>
+struct ilist_sentinel_traits<Token> {
+  Token *createSentinel() const {
+    return &Sentinel;
+  }
+  static void destroySentinel(Token*) {}
+
+  Token *provideInitialHead() const { return createSentinel(); }
+  Token *ensureHead(Token*) const { return createSentinel(); }
+  static void noteHead(Token*, Token*) {}
+
+private:
+  mutable Token Sentinel;
+};
+
+template<>
+struct ilist_node_traits<Token> {
+  Token *createNode(const Token &V) {
+    return new (Alloc.Allocate<Token>()) Token(V);
+  }
+  static void deleteNode(Token *V) {}
+
+  void addNodeToList(Token *) {}
+  void removeNodeFromList(Token *) {}
+  void transferNodesFromList(ilist_node_traits &    /*SrcTraits*/,
+                             ilist_iterator<Token> /*first*/,
+                             ilist_iterator<Token> /*last*/) {}
+
+  BumpPtrAllocator Alloc;
+};
+
+namespace yaml {
+
+typedef ilist<Token> TokenQueueT;
+
+/// @brief This struct is used to track simple keys.
+///
+/// Simple keys are handled by creating an entry in SimpleKeys for each Token
+/// which could legally be the start of a simple key. When peekNext is called,
+/// if the Token to be returned is referenced by a SimpleKey, we continue
+/// tokenizing until that potential simple key has either been found to not be
+/// a simple key (we moved on to the next line or went further than 1024 chars).
+/// Or when we run into a Value, and then insert a Key token (and possibly
+/// others) before the SimpleKey's Tok.
+struct SimpleKey {
+  TokenQueueT::iterator Tok;
+  unsigned Column;
+  unsigned Line;
+  unsigned FlowLevel;
+  bool IsRequired;
+
+  bool operator ==(const SimpleKey &Other) {
+    return Tok == Other.Tok;
+  }
+};
+
+/// @brief Scans YAML tokens from a MemoryBuffer.
+class Scanner {
+public:
+  Scanner(const StringRef input, SourceMgr &sm);
+
+  /// @brief Parse the next token and return it without popping it.
+  Token &peekNext();
+
+  /// @brief Parse the next token and pop it from the queue.
+  Token getNext();
+
+  void printError(SMLoc Loc, SourceMgr::DiagKind Kind, const Twine &Msg,
+                  ArrayRef<SMRange> Ranges = ArrayRef<SMRange>()) {
+    SM.PrintMessage(Loc, Kind, Msg, Ranges);
+  }
+
+  void setError(const Twine &Msg, StringRef::iterator Pos) {
+    if (Pos >= End)
+      Pos = End - 1;
+
+    // Don't print out more errors after the first one we encounter. The rest
+    // are just the result of the first, and have no meaning.
+    if (!Failed)
+      printError(SMLoc::getFromPointer(Pos), SourceMgr::DK_Error, Msg);
+    Failed = true;
+  }
+
+  void setError(const Twine &Msg) {
+    setError(Msg, Cur);
+  }
+
+  /// @brief Returns true if an error occurred while parsing.
+  bool failed() {
+    return Failed;
+  }
+
+private:
+  StringRef currentInput() {
+    return StringRef(Cur, End - Cur);
+  }
+
+  /// @brief The Unicode scalar value of a UTF-8 minimal well-formed code unit
+  ///        subsequence and the subsequence's length in code units (uint8_t).
+  ///        A length of 0 represents an error.
+  typedef std::pair<uint32_t, unsigned> UTF8Decoded;
+
+  /// @brief Decode a UTF-8 minimal well-formed code unit subsequence starting
+  ///        at \a Pos.
+  ///
+  /// If the UTF-8 code units starting at Pos do not form a well-formed code
+  /// unit subsequence, then the Unicode scalar value is 0, and the length is 0.
+  UTF8Decoded decodeUTF8(StringRef::iterator Pos);
+
+  // The following functions are based on the gramar rules in the YAML spec. The
+  // style of the function names it meant to closely match how they are written
+  // in the spec. The number within the [] is the number of the grammar rule in
+  // the spec.
+  //
+  // See 4.2 [Production Naming Conventions] for the meaning of the prefixes.
+
+  /// @brief Skip a single nb-char[27] starting at Pos.
+  ///
+  /// A nb-char is 0x9 | [0x20-0x7E] | 0x85 | [0xA0-0xD7FF] | [0xE000-0xFEFE]
+  ///                  | [0xFF00-0xFFFD] | [0x10000-0x10FFFF]
+  ///
+  /// @returns The code unit after the nb-char, or Pos if it's not an nb-char.
+  StringRef::iterator skip_nb_char(StringRef::iterator Pos);
+
+  /// @brief Skip a single b-break[28] starting at Pos.
+  ///
+  /// A b-break is 0xD 0xA | 0xD | 0xA
+  ///
+  /// @returns The code unit after the b-break, or Pos if it's not a b-break.
+  StringRef::iterator skip_b_break(StringRef::iterator Pos);
+
+  /// @brief Skip a single s-white[33] starting at Pos.
+  ///
+  /// A s-white is 0x20 | 0x9
+  ///
+  /// @returns The code unit after the s-white, or Pos if it's not a s-white.
+  StringRef::iterator skip_s_white(StringRef::iterator Pos);
+
+  /// @brief Skip a single ns-char[34] starting at Pos.
+  ///
+  /// A ns-char is nb-char - s-white
+  ///
+  /// @returns The code unit after the ns-char, or Pos if it's not a ns-char.
+  StringRef::iterator skip_ns_char(StringRef::iterator Pos);
+
+  /// @brief Skip minimal well-formed code unit subsequences until Func
+  ///        returns its input.
+  ///
+  /// @returns The code unit after the last minimal well-formed code unit
+  ///          subsequence that Func accepted.
+  template<StringRef::iterator (Scanner::*Func)(StringRef::iterator)>
+  StringRef::iterator skip_while(StringRef::iterator Pos) {
+    while (true) {
+      StringRef::iterator i = (this->*Func)(Pos);
+      if (i == Pos)
+        break;
+      Pos = i;
+    }
+    return Pos;
+  }
+
+  /// @brief Scan ns-uri-char[39]s starting at Cur.
+  ///
+  /// This updates Cur and Column while scanning.
+  ///
+  /// @returns A StringRef starting at Cur which covers the longest contiguous
+  ///          sequence of ns-uri-char.
+  StringRef scan_ns_uri_char();
+
+  /// @brief Scan ns-plain-one-line[133] starting at \a Cur.
+  StringRef scan_ns_plain_one_line();
+
+  /// @brief Consume a minimal well-formed code unit subsequence starting at
+  ///        \a Cur. Return false if it is not the same Unicode scalar value as
+  ///        \a expected. This updates \a Column.
+  bool consume(uint32_t expected);
+
+  /// @brief Skip \a Distance UTF-8 code units. Updates \a Cur and \a Column.
+  void skip(uint32_t Distance);
+
+  /// @brief Return true if the minimal well-formed code unit subsequence at
+  ///        Pos is whitespace or a new line
+  bool isBlankOrBreak(StringRef::iterator Pos);
+
+  /// @brief If IsSimpleKeyAllowed, create and push_back a new SimpleKey.
+  void saveSimpleKeyCandidate( TokenQueueT::iterator Tok
+                             , unsigned Col
+                             , bool IsRequired);
+
+  /// @brief Remove simple keys that can no longer be valid simple keys.
+  ///
+  /// Invalid simple keys are not on the current line or are further than 1024
+  /// columns back.
+  void removeStaleSimpleKeyCandidates();
+
+  /// @brief Remove all simple keys on FlowLevel \a Level.
+  void removeSimpleKeyCandidatesOnFlowLevel(unsigned Level);
+
+  /// @brief Unroll indentation in \a Indents back to \a Col. Creates BlockEnd
+  ///        tokens if needed.
+  bool unrollIndent(int Col);
+
+  /// @brief Increase indent to \a Col. Creates \a Kind token at \a InsertPoint
+  ///        if needed.
+  bool rollIndent( int Col
+                 , Token::TokenKind Kind
+                 , TokenQueueT::iterator InsertPoint);
+
+  /// @brief Skip whitespace and comments until the start of the next token.
+  void scanToNextToken();
+
+  /// @brief Must be the first token generated.
+  bool scanStreamStart();
+
+  /// @brief Generate tokens needed to close out the stream.
+  bool scanStreamEnd();
+
+  /// @brief Scan a %BLAH directive.
+  bool scanDirective();
+
+  /// @brief Scan a ... or ---.
+  bool scanDocumentIndicator(bool IsStart);
+
+  /// @brief Scan a [ or { and generate the proper flow collection start token.
+  bool scanFlowCollectionStart(bool IsSequence);
+
+  /// @brief Scan a ] or } and generate the proper flow collection end token.
+  bool scanFlowCollectionEnd(bool IsSequence);
+
+  /// @brief Scan the , that separates entries in a flow collection.
+  bool scanFlowEntry();
+
+  /// @brief Scan the - that starts block sequence entries.
+  bool scanBlockEntry();
+
+  /// @brief Scan an explicit ? indicating a key.
+  bool scanKey();
+
+  /// @brief Scan an explicit : indicating a value.
+  bool scanValue();
+
+  /// @brief Scan a quoted scalar.
+  bool scanFlowScalar(bool IsDoubleQuoted);
+
+  /// @brief Scan an unquoted scalar.
+  bool scanPlainScalar();
+
+  /// @brief Scan an Alias or Anchor starting with * or &.
+  bool scanAliasOrAnchor(bool IsAlias);
+
+  /// @brief Scan a block scalar starting with | or >.
+  bool scanBlockScalar(bool IsLiteral);
+
+  /// @brief Scan a tag of the form !stuff.
+  bool scanTag();
+
+  /// @brief Dispatch to the next scanning function based on \a *Cur.
+  bool fetchMoreTokens();
+
+  /// @brief The SourceMgr used for diagnostics and buffer management.
+  SourceMgr &SM;
+
+  /// @brief The original input.
+  MemoryBuffer *InputBuffer;
+
+  /// @brief The current position of the scanner.
+  StringRef::iterator Cur;
+
+  /// @brief The end of the input (one past the last character).
+  StringRef::iterator End;
+
+  /// @brief Current YAML indentation level in spaces.
+  int Indent;
+
+  /// @brief Current column number in Unicode code points.
+  unsigned Column;
+
+  /// @brief Current line number.
+  unsigned Line;
+
+  /// @brief How deep we are in flow style containers. 0 Means at block level.
+  unsigned FlowLevel;
+
+  /// @brief Are we at the start of the stream?
+  bool IsStartOfStream;
+
+  /// @brief Can the next token be the start of a simple key?
+  bool IsSimpleKeyAllowed;
+
+  /// @brief Is the next token required to start a simple key?
+  bool IsSimpleKeyRequired;
+
+  /// @brief True if an error has occurred.
+  bool Failed;
+
+  /// @brief Queue of tokens. This is required to queue up tokens while looking
+  ///        for the end of a simple key. And for cases where a single character
+  ///        can produce multiple tokens (e.g. BlockEnd).
+  TokenQueueT TokenQueue;
+
+  /// @brief Indentation levels.
+  SmallVector<int, 4> Indents;
+
+  /// @brief Potential simple keys.
+  SmallVector<SimpleKey, 4> SimpleKeys;
+};
+
+} // end namespace yaml
+} // end namespace llvm
+
+bool yaml::dumpTokens(StringRef input, raw_ostream &OS) {
+  SourceMgr SM;
+  Scanner scanner(input, SM);
+  while (true) {
+    Token t = scanner.getNext();
+    switch (t.Kind) {
+    case Token::TK_StreamStart:
+      OS << "Stream-Start(" << t.StreamStart.Encoding << "): ";
+      break;
+    case Token::TK_StreamEnd:
+      OS << "Stream-End: ";
+      break;
+    case Token::TK_VersionDirective:
+      OS << "Version-Directive(" << t.VersionDirective.Value << "): ";
+      break;
+    case Token::TK_TagDirective:
+      OS << "Tag-Directive: ";
+      break;
+    case Token::TK_DocumentStart:
+      OS << "Document-Start: ";
+      break;
+    case Token::TK_DocumentEnd:
+      OS << "Document-End: ";
+      break;
+    case Token::TK_BlockEntry:
+      OS << "Block-Entry: ";
+      break;
+    case Token::TK_BlockEnd:
+      OS << "Block-End: ";
+      break;
+    case Token::TK_BlockSequenceStart:
+      OS << "Block-Sequence-Start: ";
+      break;
+    case Token::TK_BlockMappingStart:
+      OS << "Block-Mapping-Start: ";
+      break;
+    case Token::TK_FlowEntry:
+      OS << "Flow-Entry: ";
+      break;
+    case Token::TK_FlowSequenceStart:
+      OS << "Flow-Sequence-Start: ";
+      break;
+    case Token::TK_FlowSequenceEnd:
+      OS << "Flow-Sequence-End: ";
+      break;
+    case Token::TK_FlowMappingStart:
+      OS << "Flow-Mapping-Start: ";
+      break;
+    case Token::TK_FlowMappingEnd:
+      OS << "Flow-Mapping-End: ";
+      break;
+    case Token::TK_Key:
+      OS << "Key: ";
+      break;
+    case Token::TK_Value:
+      OS << "Value: ";
+      break;
+    case Token::TK_Scalar:
+      OS << "Scalar(" << t.Scalar.Value << "): ";
+      break;
+    case Token::TK_Alias:
+      OS << "Alias(" << t.Scalar.Value << "): ";
+      break;
+    case Token::TK_Anchor:
+      OS << "Anchor(" << t.Scalar.Value << "): ";
+      break;
+    case Token::TK_Tag:
+      OS << "Tag: ";
+      break;
+    case Token::TK_Error:
+      break;
+    }
+    OS << t.Range << "\n";
+    if (t.Kind == Token::TK_StreamEnd)
+      break;
+    else if (t.Kind == Token::TK_Error)
+      return false;
+  }
+  return true;
+}
+
+bool yaml::scanTokens(StringRef input) {
+  llvm::SourceMgr SM;
+  llvm::yaml::Scanner scanner(input, SM);
+  for (;;) {
+    llvm::yaml::Token t = scanner.getNext();
+    if (t.Kind == Token::TK_StreamEnd)
+      break;
+    else if (t.Kind == Token::TK_Error)
+      return false;
+  }
+  return true;
+}
+
 Scanner::Scanner(StringRef input, SourceMgr &sm)
   : SM(sm)
   , Indent(-1)
@@ -100,7 +586,7 @@ Token &Scanner::peekNext() {
     assert(!TokenQueue.empty() &&
             "fetchMoreTokens lied about getting tokens!");
 
-    removeStaleSimpleKeys();
+    removeStaleSimpleKeyCandidates();
     SimpleKey SK;
     SK.Tok = TokenQueue.front();
     if (std::find(SimpleKeys.begin(), SimpleKeys.end(), SK)
@@ -349,9 +835,9 @@ bool Scanner::isBlankOrBreak(StringRef::iterator Pos) {
   return false;
 }
 
-void Scanner::saveSimpleKey( TokenQueueT::iterator Tok
-                           , unsigned Col
-                           , bool IsRequired) {
+void Scanner::saveSimpleKeyCandidate( TokenQueueT::iterator Tok
+                                    , unsigned Col
+                                    , bool IsRequired) {
   if (IsSimpleKeyAllowed) {
     SimpleKey SK;
     SK.Tok = Tok;
@@ -363,7 +849,7 @@ void Scanner::saveSimpleKey( TokenQueueT::iterator Tok
   }
 }
 
-void Scanner::removeStaleSimpleKeys() {
+void Scanner::removeStaleSimpleKeyCandidates() {
   for (SmallVectorImpl<SimpleKey>::iterator i = SimpleKeys.begin();
                                             i != SimpleKeys.end();) {
     if (i->Line != Line || i->Column + 1024 < Column) {
@@ -376,7 +862,7 @@ void Scanner::removeStaleSimpleKeys() {
   }
 }
 
-void Scanner::removeSimpleKeyOnFlowLevel(unsigned Level) {
+void Scanner::removeSimpleKeyCandidatesOnFlowLevel(unsigned Level) {
   if (!SimpleKeys.empty() && (SimpleKeys.end() - 1)->FlowLevel == Level)
     SimpleKeys.pop_back();
 }
@@ -526,7 +1012,7 @@ bool Scanner::scanFlowCollectionStart(bool IsSequence) {
   TokenQueue.push_back(t);
 
   // [ and { may begin a simple key.
-  saveSimpleKey(TokenQueue.back(), Column - 1, false);
+  saveSimpleKeyCandidate(TokenQueue.back(), Column - 1, false);
 
   // And may also be followed by a simple key.
   IsSimpleKeyAllowed = true;
@@ -535,7 +1021,7 @@ bool Scanner::scanFlowCollectionStart(bool IsSequence) {
 }
 
 bool Scanner::scanFlowCollectionEnd(bool IsSequence) {
-  removeSimpleKeyOnFlowLevel(FlowLevel);
+  removeSimpleKeyCandidatesOnFlowLevel(FlowLevel);
   IsSimpleKeyAllowed = false;
   Token t;
   t.Kind = IsSequence ? Token::TK_FlowSequenceEnd
@@ -549,7 +1035,7 @@ bool Scanner::scanFlowCollectionEnd(bool IsSequence) {
 }
 
 bool Scanner::scanFlowEntry() {
-  removeSimpleKeyOnFlowLevel(FlowLevel);
+  removeSimpleKeyCandidatesOnFlowLevel(FlowLevel);
   IsSimpleKeyAllowed = true;
   Token t;
   t.Kind = Token::TK_FlowEntry;
@@ -561,7 +1047,7 @@ bool Scanner::scanFlowEntry() {
 
 bool Scanner::scanBlockEntry() {
   rollIndent(Column, Token::TK_BlockSequenceStart, TokenQueue.end());
-  removeSimpleKeyOnFlowLevel(FlowLevel);
+  removeSimpleKeyCandidatesOnFlowLevel(FlowLevel);
   IsSimpleKeyAllowed = true;
   Token t;
   t.Kind = Token::TK_BlockEntry;
@@ -575,7 +1061,7 @@ bool Scanner::scanKey() {
   if (!FlowLevel)
     rollIndent(Column, Token::TK_BlockMappingStart, TokenQueue.end());
 
-  removeSimpleKeyOnFlowLevel(FlowLevel);
+  removeSimpleKeyCandidatesOnFlowLevel(FlowLevel);
   IsSimpleKeyAllowed = !FlowLevel;
 
   Token t;
@@ -683,7 +1169,7 @@ bool Scanner::scanFlowScalar(bool IsDoubleQuoted) {
   t.Scalar.Value = Value;
   TokenQueue.push_back(t);
 
-  saveSimpleKey(TokenQueue.back(), ColStart, false);
+  saveSimpleKeyCandidate(TokenQueue.back(), ColStart, false);
 
   IsSimpleKeyAllowed = false;
 
@@ -761,7 +1247,7 @@ bool Scanner::scanPlainScalar() {
   TokenQueue.push_back(t);
 
   // Plain scalars can be simple keys.
-  saveSimpleKey(TokenQueue.back(), ColStart, false);
+  saveSimpleKeyCandidate(TokenQueue.back(), ColStart, false);
 
   IsSimpleKeyAllowed = false;
 
@@ -797,7 +1283,7 @@ bool Scanner::scanAliasOrAnchor(bool IsAlias) {
   TokenQueue.push_back(t);
 
   // Alias and anchors can be simple keys.
-  saveSimpleKey(TokenQueue.back(), ColStart, false);
+  saveSimpleKeyCandidate(TokenQueue.back(), ColStart, false);
 
   IsSimpleKeyAllowed = false;
 
@@ -862,7 +1348,7 @@ bool Scanner::scanTag() {
   TokenQueue.push_back(t);
 
   // Tags can be simple keys.
-  saveSimpleKey(TokenQueue.back(), ColStart, false);
+  saveSimpleKeyCandidate(TokenQueue.back(), ColStart, false);
 
   IsSimpleKeyAllowed = false;
 
@@ -878,7 +1364,7 @@ bool Scanner::fetchMoreTokens() {
   if (Cur == End)
     return scanStreamEnd();
 
-  removeStaleSimpleKeys();
+  removeStaleSimpleKeyCandidates();
 
   unrollIndent(Column);
 
@@ -961,10 +1447,16 @@ bool Scanner::fetchMoreTokens() {
   return false;
 }
 
-Stream::Stream(StringRef input, SourceMgr &sm) : S(input, sm) {}
+Stream::Stream(StringRef input, SourceMgr &sm)
+  : scanner(new Scanner(input, sm))
+  , CurrentDoc(0) {}
+
+Stream::~Stream() { delete CurrentDoc; }
+
+bool Stream::failed() { return scanner->failed(); }
 
 void Stream::handleYAMLDirective(const Token &t) {
-
+  // TODO: Ensure version is 1.x.
 }
 
 document_iterator Stream::begin() {
@@ -972,10 +1464,10 @@ document_iterator Stream::begin() {
     report_fatal_error("Can only iterate over the stream once");
 
   // Skip Stream-Start.
-  S.getNext();
+  scanner->getNext();
 
-  CurrentDoc.reset(new Document(*this));
-  return document_iterator(CurrentDoc.get());
+  CurrentDoc = new Document(*this);
+  return document_iterator(CurrentDoc);
 }
 
 document_iterator Stream::end() {
@@ -988,9 +1480,9 @@ void Stream::skip() {
 }
 
 Node::Node(unsigned int Type, Document *D, StringRef A)
-  : TypeID(Type)
+  : Doc(D)
+  , TypeID(Type)
   , Anchor(A)
-  , Doc(D)
 {}
 
 Node::~Node() {}
@@ -1087,7 +1579,7 @@ void MappingNode::increment() {
   }
   if (CurrentEntry) {
     CurrentEntry->skip();
-    if (MType == MT_Inline) {
+    if (Type == MT_Inline) {
       IsAtEnd = true;
       CurrentEntry = 0;
       return;
@@ -1098,7 +1590,7 @@ void MappingNode::increment() {
     // KeyValueNode eats the TK_Key. That way it can detect null keys.
     CurrentEntry = new (getAllocator().Allocate<KeyValueNode>())
       KeyValueNode(Doc);
-  } else if (MType == MT_Block) {
+  } else if (Type == MT_Block) {
     switch (t.Kind) {
     case Token::TK_BlockEnd:
       getNext();
@@ -1220,6 +1712,46 @@ void SequenceNode::increment() {
   }
 }
 
+Document::Document(Stream &s) : stream(s), Root(0) {
+  if (parseDirectives())
+    expectToken(Token::TK_DocumentStart);
+  Token &t = peekNext();
+  if (t.Kind == Token::TK_DocumentStart)
+    getNext();
+}
+
+bool Document::skip()  {
+  if (stream.scanner->failed())
+    return false;
+  if (!Root)
+    getRoot();
+  Root->skip();
+  Token &t = peekNext();
+  if (t.Kind == Token::TK_StreamEnd)
+    return false;
+  if (t.Kind == Token::TK_DocumentEnd) {
+    getNext();
+    return skip();
+  }
+  return true;
+}
+
+Token &Document::peekNext() {
+  return stream.scanner->peekNext();
+}
+
+Token Document::getNext() {
+  return stream.scanner->getNext();
+}
+
+void Document::setError(const Twine &Msg, Token &Tok) {
+  stream.scanner->setError(Msg, Tok.Range.begin());
+}
+
+bool Document::failed() const {
+  return stream.scanner->failed();
+}
+
 Node *Document::parseBlockNode() {
   Token t = peekNext();
   // Handle properties.
@@ -1292,3 +1824,30 @@ parse_property:
   llvm_unreachable("Control flow shouldn't reach here.");
   return 0;
 }
+
+bool Document::parseDirectives() {
+  bool isDirective = false;
+  while (true) {
+    Token t = peekNext();
+    if (t.Kind == Token::TK_TagDirective) {
+      handleTagDirective(getNext());
+      isDirective = true;
+    } else if (t.Kind == Token::TK_VersionDirective) {
+      stream.handleYAMLDirective(getNext());
+      isDirective = true;
+    } else
+      break;
+  }
+  return isDirective;
+}
+
+bool Document::expectToken(int TK) {
+  Token t = getNext();
+  if (t.Kind != TK) {
+    setError("Unexpected token", t);
+    return false;
+  }
+  return true;
+}
+
+Document *document_iterator::NullDoc = 0;

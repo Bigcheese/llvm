@@ -16,6 +16,7 @@
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/MemoryBuffer.h"
 #include "llvm/Support/raw_ostream.h"
+#include "llvm/Support/SourceMgr.h"
 #include "llvm/Support/system_error.h"
 #include "llvm/Support/Timer.h"
 #include "llvm/Support/YAMLParser.h"
@@ -103,83 +104,6 @@ void dumpNode( yaml::Node *n
   }
 }
 
-void dumpTokens(yaml::Scanner &s) {
-  while (true) {
-    yaml::Token t = s.getNext();
-    switch (t.Kind) {
-    case yaml::Token::TK_StreamStart:
-      outs() << "Stream-Start(" << t.StreamStart.Encoding << "): ";
-      break;
-    case yaml::Token::TK_StreamEnd:
-      outs() << "Stream-End: ";
-      break;
-    case yaml::Token::TK_VersionDirective:
-      outs() << "Version-Directive(" << t.VersionDirective.Value << "): ";
-      break;
-    case yaml::Token::TK_TagDirective:
-      outs() << "Tag-Directive: ";
-      break;
-    case yaml::Token::TK_DocumentStart:
-      outs() << "Document-Start: ";
-      break;
-    case yaml::Token::TK_DocumentEnd:
-      outs() << "Document-End: ";
-      break;
-    case yaml::Token::TK_BlockEntry:
-      outs() << "Block-Entry: ";
-      break;
-    case yaml::Token::TK_BlockEnd:
-      outs() << "Block-End: ";
-      break;
-    case yaml::Token::TK_BlockSequenceStart:
-      outs() << "Block-Sequence-Start: ";
-      break;
-    case yaml::Token::TK_BlockMappingStart:
-      outs() << "Block-Mapping-Start: ";
-      break;
-    case yaml::Token::TK_FlowEntry:
-      outs() << "Flow-Entry: ";
-      break;
-    case yaml::Token::TK_FlowSequenceStart:
-      outs() << "Flow-Sequence-Start: ";
-      break;
-    case yaml::Token::TK_FlowSequenceEnd:
-      outs() << "Flow-Sequence-End: ";
-      break;
-    case yaml::Token::TK_FlowMappingStart:
-      outs() << "Flow-Mapping-Start: ";
-      break;
-    case yaml::Token::TK_FlowMappingEnd:
-      outs() << "Flow-Mapping-End: ";
-      break;
-    case yaml::Token::TK_Key:
-      outs() << "Key: ";
-      break;
-    case yaml::Token::TK_Value:
-      outs() << "Value: ";
-      break;
-    case yaml::Token::TK_Scalar:
-      outs() << "Scalar(" << t.Scalar.Value << "): ";
-      break;
-    case yaml::Token::TK_Alias:
-      outs() << "Alias(" << t.Scalar.Value << "): ";
-      break;
-    case yaml::Token::TK_Anchor:
-      outs() << "Anchor(" << t.Scalar.Value << "): ";
-      break;
-    case yaml::Token::TK_Tag:
-      outs() << "Tag: ";
-      break;
-    case yaml::Token::TK_Error:
-      break;
-    }
-    outs() << t.Range << "\n";
-    if (t.Kind == yaml::Token::TK_StreamEnd || t.Kind == yaml::Token::TK_Error)
-      break;
-    outs().flush();
-  }
-}
-
 void dumpStream(yaml::Stream &stream) {
   for (yaml::document_iterator di = stream.begin(), de = stream.end(); di != de;
        ++di) {
@@ -208,14 +132,7 @@ void benchmark(llvm::TimerGroup &Group, llvm::StringRef Name,
   llvm::Timer Tokenizing((Name + ": Tokenizing").str(), Group);
   Tokenizing.startTimer();
   {
-    llvm::SourceMgr SM;
-    llvm::yaml::Scanner scanner(JSONText, SM);
-    for (;;) {
-      llvm::yaml::Token t = scanner.getNext();
-      if (  t.Kind == llvm::yaml::Token::TK_StreamEnd
-         || t.Kind == llvm::yaml::Token::TK_Error)
-        break;
-    }
+    yaml::scanTokens(JSONText);
   }
   Tokenizing.stopTimer();
 
@@ -258,8 +175,7 @@ int main(int argc, char **argv) {
 
     llvm::SourceMgr sm;
     if (DumpTokens) {
-      yaml::Scanner s(Buf->getBuffer(), sm);
-      dumpTokens(s);
+      yaml::dumpTokens(Buf->getBuffer(), outs());
     }
 
     if (DumpCanonical) {
