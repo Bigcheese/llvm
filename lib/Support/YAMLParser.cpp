@@ -97,18 +97,6 @@ EncodingInfo getUnicodeEncoding(StringRef Input) {
   return std::make_pair(UEF_UTF8, 0);
 }
 
-struct StreamStartInfo {
-  UnicodeEncodingForm Encoding;
-};
-
-struct VersionDirectiveInfo {
-  StringRef Value;
-};
-
-struct ScalarInfo {
-  StringRef Value;
-};
-
 /// Token - A single YAML token.
 struct Token : ilist_node<Token> {
   enum TokenKind {
@@ -139,12 +127,6 @@ struct Token : ilist_node<Token> {
   /// A string of length 0 or more whose begin() points to the logical location
   /// of the token in the input.
   StringRef Range;
-
-  /// TODO: Stick these into a union. They currently aren't because StringRef
-  ///       can't be in a union in C++03.
-  StreamStartInfo StreamStart;
-  VersionDirectiveInfo VersionDirective;
-  ScalarInfo Scalar;
 
   Token() : Kind(TK_Error) {}
 };
@@ -267,6 +249,19 @@ private:
   // the spec.
   //
   // See 4.2 [Production Naming Conventions] for the meaning of the prefixes.
+  //
+  // c-
+  //   A production starting and ending with a special character.
+  // b-
+  //   A production matching a single line break.
+  // nb-
+  //   A production starting and ending with a non-break character.
+  // s-
+  //   A production starting and ending with a white space character.
+  // ns-
+  //   A production starting and ending with a non-space character.
+  // l-
+  //   A production matching complete line(s).
 
   /// @brief Skip a single nb-char[27] starting at Position.
   ///
@@ -473,13 +468,13 @@ bool yaml::dumpTokens(StringRef Input, raw_ostream &OS) {
     Token T = scanner.getNext();
     switch (T.Kind) {
     case Token::TK_StreamStart:
-      OS << "Stream-Start(" << T.StreamStart.Encoding << "): ";
+      OS << "Stream-Start: ";
       break;
     case Token::TK_StreamEnd:
       OS << "Stream-End: ";
       break;
     case Token::TK_VersionDirective:
-      OS << "Version-Directive(" << T.VersionDirective.Value << "): ";
+      OS << "Version-Directive: ";
       break;
     case Token::TK_TagDirective:
       OS << "Tag-Directive: ";
@@ -524,13 +519,13 @@ bool yaml::dumpTokens(StringRef Input, raw_ostream &OS) {
       OS << "Value: ";
       break;
     case Token::TK_Scalar:
-      OS << "Scalar(" << T.Scalar.Value << "): ";
+      OS << "Scalar: ";
       break;
     case Token::TK_Alias:
-      OS << "Alias(" << T.Scalar.Value << "): ";
+      OS << "Alias: ";
       break;
     case Token::TK_Anchor:
-      OS << "Anchor(" << T.Scalar.Value << "): ";
+      OS << "Anchor: ";
       break;
     case Token::TK_Tag:
       OS << "Tag: ";
@@ -945,12 +940,12 @@ bool Scanner::scanStreamStart() {
   IsStartOfStream = false;
 
   EncodingInfo EI = getUnicodeEncoding(currentInput());
-  Current += EI.second;
 
   Token T;
   T.Kind = Token::TK_StreamStart;
-  T.StreamStart.Encoding = EI.first;
+  T.Range = StringRef(Current, EI.second);
   TokenQueue.push_back(T);
+  Current += EI.second;
   return true;
 }
 
@@ -986,13 +981,10 @@ bool Scanner::scanDirective() {
   Current = skip_while<&Scanner::skip_s_white>(Current);
 
   if (Name == "YAML") {
-    StringRef::iterator VersionStart = Current;
     Current = skip_while<&Scanner::skip_ns_char>(Current);
-    StringRef Version(VersionStart, Current - VersionStart);
     Token T;
     T.Kind = Token::TK_VersionDirective;
     T.Range = StringRef(Start, Current - Start);
-    T.VersionDirective.Value = Version;
     TokenQueue.push_back(T);
     return true;
   }
@@ -1170,12 +1162,10 @@ bool Scanner::scanFlowScalar(bool IsDoubleQuoted) {
       }
     }
   }
-  StringRef Value(Start + 1, Current - (Start + 1));
   skip(1); // Skip ending quote.
   Token T;
   T.Kind = Token::TK_Scalar;
   T.Range = StringRef(Start, Current - Start);
-  T.Scalar.Value = Value;
   TokenQueue.push_back(T);
 
   saveSimpleKeyCandidate(TokenQueue.back(), ColStart, false);
@@ -1252,7 +1242,6 @@ bool Scanner::scanPlainScalar() {
   Token T;
   T.Kind = Token::TK_Scalar;
   T.Range = StringRef(Start, Current - Start);
-  T.Scalar.Value = T.Range;
   TokenQueue.push_back(T);
 
   // Plain scalars can be simple keys.
@@ -1288,7 +1277,6 @@ bool Scanner::scanAliasOrAnchor(bool IsAlias) {
   Token T;
   T.Kind = IsAlias ? Token::TK_Alias : Token::TK_Anchor;
   T.Range = StringRef(Start, Current - Start);
-  T.Scalar.Value = T.Range.substr(1);
   TokenQueue.push_back(T);
 
   // Alias and anchors can be simple keys.
@@ -1331,7 +1319,6 @@ bool Scanner::scanBlockScalar(bool IsLiteral) {
   Token T;
   T.Kind = Token::TK_Scalar;
   T.Range = StringRef(Start, Current - Start);
-  T.Scalar.Value = T.Range;
   TokenQueue.push_back(T);
   return true;
 }
@@ -1721,11 +1708,11 @@ void SequenceNode::increment() {
   }
 }
 
-Document::Document(Stream &s) : stream(s), Root(0) {
+Document::Document(Stream &S) : stream(S), Root(0) {
   if (parseDirectives())
     expectToken(Token::TK_DocumentStart);
-  Token &t = peekNext();
-  if (t.Kind == Token::TK_DocumentStart)
+  Token &T = peekNext();
+  if (T.Kind == Token::TK_DocumentStart)
     getNext();
 }
 
@@ -1735,10 +1722,10 @@ bool Document::skip()  {
   if (!Root)
     getRoot();
   Root->skip();
-  Token &t = peekNext();
-  if (t.Kind == Token::TK_StreamEnd)
+  Token &T = peekNext();
+  if (T.Kind == Token::TK_StreamEnd)
     return false;
-  if (t.Kind == Token::TK_DocumentEnd) {
+  if (T.Kind == Token::TK_DocumentEnd) {
     getNext();
     return skip();
   }
@@ -1753,8 +1740,8 @@ Token Document::getNext() {
   return stream.scanner->getNext();
 }
 
-void Document::setError(const Twine &Msg, Token &Tok) {
-  stream.scanner->setError(Msg, Tok.Range.begin());
+void Document::setError(const Twine &Message, Token &Location) {
+  stream.scanner->setError(Message, Location.Range.begin());
 }
 
 bool Document::failed() const {
@@ -1770,7 +1757,7 @@ parse_property:
   case Token::TK_Alias:
     getNext();
     return new (NodeAllocator.Allocate<AliasNode>())
-      AliasNode(this, T.Scalar.Value);
+      AliasNode(this, T.Range.substr(1));
   case Token::TK_Anchor:
     if (AnchorInfo.Kind == Token::TK_Anchor) {
       setError("Already encountered an anchor for this node!", T);
@@ -1794,32 +1781,32 @@ parse_property:
     // Don't eat the TK_BlockEntry, SequenceNode needs it.
     return new (NodeAllocator.Allocate<SequenceNode>())
       SequenceNode( this
-                  , AnchorInfo.Scalar.Value
+                  , AnchorInfo.Range.substr(1)
                   , SequenceNode::ST_Indentless);
   case Token::TK_BlockSequenceStart:
     getNext();
     return new (NodeAllocator.Allocate<SequenceNode>())
-      SequenceNode(this, AnchorInfo.Scalar.Value, SequenceNode::ST_Block);
+      SequenceNode(this, AnchorInfo.Range.substr(1), SequenceNode::ST_Block);
   case Token::TK_BlockMappingStart:
     getNext();
     return new (NodeAllocator.Allocate<MappingNode>())
-      MappingNode(this, AnchorInfo.Scalar.Value, MappingNode::MT_Block);
+      MappingNode(this, AnchorInfo.Range.substr(1), MappingNode::MT_Block);
   case Token::TK_FlowSequenceStart:
     getNext();
     return new (NodeAllocator.Allocate<SequenceNode>())
-      SequenceNode(this, AnchorInfo.Scalar.Value, SequenceNode::ST_Flow);
+      SequenceNode(this, AnchorInfo.Range.substr(1), SequenceNode::ST_Flow);
   case Token::TK_FlowMappingStart:
     getNext();
     return new (NodeAllocator.Allocate<MappingNode>())
-      MappingNode(this, AnchorInfo.Scalar.Value, MappingNode::MT_Flow);
+      MappingNode(this, AnchorInfo.Range.substr(1), MappingNode::MT_Flow);
   case Token::TK_Scalar:
     getNext();
     return new (NodeAllocator.Allocate<ScalarNode>())
-      ScalarNode(this, AnchorInfo.Scalar.Value, T.Scalar.Value);
+      ScalarNode(this, AnchorInfo.Range.substr(1), T.Range);
   case Token::TK_Key:
     // Don't eat the TK_Key, KeyValueNode expects it.
     return new (NodeAllocator.Allocate<MappingNode>())
-      MappingNode(this, AnchorInfo.Scalar.Value, MappingNode::MT_Inline);
+      MappingNode(this, AnchorInfo.Range.substr(1), MappingNode::MT_Inline);
   case Token::TK_DocumentStart:
   case Token::TK_DocumentEnd:
   case Token::TK_StreamEnd:
