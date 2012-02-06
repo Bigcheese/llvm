@@ -42,56 +42,56 @@ enum UnicodeEncodingForm {
 typedef std::pair<UnicodeEncodingForm, unsigned> EncodingInfo;
 
 /// getBOM - Reads up to the first 4 bytes to determine the Unicode encoding
-///          form of \a input.
+///          form of \a Input.
 ///
-/// @param input A string of length 0 or more.
+/// @param Input A string of length 0 or more.
 /// @returns An EncodingInfo indicating the Unicode encoding form of the input
 ///          and how long the byte order mark is if one exists.
-EncodingInfo getUnicodeEncoding(StringRef input) {
-  if (input.size() == 0)
+EncodingInfo getUnicodeEncoding(StringRef Input) {
+  if (Input.size() == 0)
     return std::make_pair(UEF_Unknown, 0);
 
-  switch (uint8_t(input[0])) {
+  switch (uint8_t(Input[0])) {
   case 0x00:
-    if (input.size() >= 4) {
-      if (  input[1] == 0
-         && uint8_t(input[2]) == 0xFE
-         && uint8_t(input[3]) == 0xFF)
+    if (Input.size() >= 4) {
+      if (  Input[1] == 0
+         && uint8_t(Input[2]) == 0xFE
+         && uint8_t(Input[3]) == 0xFF)
         return std::make_pair(UEF_UTF32_BE, 4);
-      if (input[1] == 0 && input[2] == 0 && input[3] != 0)
+      if (Input[1] == 0 && Input[2] == 0 && Input[3] != 0)
         return std::make_pair(UEF_UTF32_BE, 0);
     }
 
-    if (input.size() >= 2 && input[1] != 0)
+    if (Input.size() >= 2 && Input[1] != 0)
       return std::make_pair(UEF_UTF16_BE, 0);
     return std::make_pair(UEF_Unknown, 0);
   case 0xFF:
-    if (  input.size() >= 4
-       && uint8_t(input[1]) == 0xFE
-       && input[2] == 0
-       && input[3] == 0)
+    if (  Input.size() >= 4
+       && uint8_t(Input[1]) == 0xFE
+       && Input[2] == 0
+       && Input[3] == 0)
       return std::make_pair(UEF_UTF32_LE, 4);
 
-    if (input.size() >= 2 && uint8_t(input[1]) == 0xFE)
+    if (Input.size() >= 2 && uint8_t(Input[1]) == 0xFE)
       return std::make_pair(UEF_UTF16_LE, 2);
     return std::make_pair(UEF_Unknown, 0);
   case 0xFE:
-    if (input.size() >= 2 && uint8_t(input[1]) == 0xFF)
+    if (Input.size() >= 2 && uint8_t(Input[1]) == 0xFF)
       return std::make_pair(UEF_UTF16_BE, 2);
     return std::make_pair(UEF_Unknown, 0);
   case 0xEF:
-    if (  input.size() >= 3
-       && uint8_t(input[1]) == 0xBB
-       && uint8_t(input[2]) == 0xBF)
+    if (  Input.size() >= 3
+       && uint8_t(Input[1]) == 0xBB
+       && uint8_t(Input[2]) == 0xBF)
       return std::make_pair(UEF_UTF8, 3);
     return std::make_pair(UEF_Unknown, 0);
   }
 
   // It could still be utf-32 or utf-16.
-  if (input.size() >= 4 && input[1] == 0 && input[2] == 0 && input[3] == 0)
+  if (Input.size() >= 4 && Input[1] == 0 && Input[2] == 0 && Input[3] == 0)
     return std::make_pair(UEF_UTF32_LE, 0);
 
-  if (input.size() >= 2 && input[1] == 0)
+  if (Input.size() >= 2 && Input[1] == 0)
     return std::make_pair(UEF_UTF16_LE, 0);
 
   return std::make_pair(UEF_UTF8, 0);
@@ -190,7 +190,7 @@ typedef ilist<Token> TokenQueueT;
 ///
 /// Simple keys are handled by creating an entry in SimpleKeys for each Token
 /// which could legally be the start of a simple key. When peekNext is called,
-/// if the Token to be returned is referenced by a SimpleKey, we continue
+/// if the Token To be returned is referenced by a SimpleKey, we continue
 /// tokenizing until that potential simple key has either been found to not be
 /// a simple key (we moved on to the next line or went further than 1024 chars).
 /// Or when we run into a Value, and then insert a Key token (and possibly
@@ -210,7 +210,7 @@ struct SimpleKey {
 /// @brief Scans YAML tokens from a MemoryBuffer.
 class Scanner {
 public:
-  Scanner(const StringRef input, SourceMgr &sm);
+  Scanner(const StringRef Input, SourceMgr &SM);
 
   /// @brief Parse the next token and return it without popping it.
   Token &peekNext();
@@ -218,24 +218,24 @@ public:
   /// @brief Parse the next token and pop it from the queue.
   Token getNext();
 
-  void printError(SMLoc Loc, SourceMgr::DiagKind Kind, const Twine &Msg,
+  void printError(SMLoc Loc, SourceMgr::DiagKind Kind, const Twine &Message,
                   ArrayRef<SMRange> Ranges = ArrayRef<SMRange>()) {
-    SM.PrintMessage(Loc, Kind, Msg, Ranges);
+    SM.PrintMessage(Loc, Kind, Message, Ranges);
   }
 
-  void setError(const Twine &Msg, StringRef::iterator Pos) {
-    if (Pos >= End)
-      Pos = End - 1;
+  void setError(const Twine &Message, StringRef::iterator Position) {
+    if (Current >= End)
+      Current = End - 1;
 
     // Don't print out more errors after the first one we encounter. The rest
     // are just the result of the first, and have no meaning.
     if (!Failed)
-      printError(SMLoc::getFromPointer(Pos), SourceMgr::DK_Error, Msg);
+      printError(SMLoc::getFromPointer(Current), SourceMgr::DK_Error, Message);
     Failed = true;
   }
 
-  void setError(const Twine &Msg) {
-    setError(Msg, Cur);
+  void setError(const Twine &Message) {
+    setError(Message, Current);
   }
 
   /// @brief Returns true if an error occurred while parsing.
@@ -245,7 +245,7 @@ public:
 
 private:
   StringRef currentInput() {
-    return StringRef(Cur, End - Cur);
+    return StringRef(Current, End - Current);
   }
 
   /// @brief The Unicode scalar value of a UTF-8 minimal well-formed code unit
@@ -254,11 +254,12 @@ private:
   typedef std::pair<uint32_t, unsigned> UTF8Decoded;
 
   /// @brief Decode a UTF-8 minimal well-formed code unit subsequence starting
-  ///        at \a Pos.
+  ///        at \a Position.
   ///
-  /// If the UTF-8 code units starting at Pos do not form a well-formed code
-  /// unit subsequence, then the Unicode scalar value is 0, and the length is 0.
-  UTF8Decoded decodeUTF8(StringRef::iterator Pos);
+  /// If the UTF-8 code units starting at Position do not form a well-formed
+  /// code unit subsequence, then the Unicode scalar value is 0, and the length
+  /// is 0.
+  UTF8Decoded decodeUTF8(StringRef::iterator Position);
 
   // The following functions are based on the gramar rules in the YAML spec. The
   // style of the function names it meant to closely match how they are written
@@ -267,34 +268,38 @@ private:
   //
   // See 4.2 [Production Naming Conventions] for the meaning of the prefixes.
 
-  /// @brief Skip a single nb-char[27] starting at Pos.
+  /// @brief Skip a single nb-char[27] starting at Position.
   ///
   /// A nb-char is 0x9 | [0x20-0x7E] | 0x85 | [0xA0-0xD7FF] | [0xE000-0xFEFE]
   ///                  | [0xFF00-0xFFFD] | [0x10000-0x10FFFF]
   ///
-  /// @returns The code unit after the nb-char, or Pos if it's not an nb-char.
-  StringRef::iterator skip_nb_char(StringRef::iterator Pos);
+  /// @returns The code unit after the nb-char, or Position if it's not an
+  ///          nb-char.
+  StringRef::iterator skip_nb_char(StringRef::iterator Position);
 
-  /// @brief Skip a single b-break[28] starting at Pos.
+  /// @brief Skip a single b-break[28] starting at Position.
   ///
   /// A b-break is 0xD 0xA | 0xD | 0xA
   ///
-  /// @returns The code unit after the b-break, or Pos if it's not a b-break.
-  StringRef::iterator skip_b_break(StringRef::iterator Pos);
+  /// @returns The code unit after the b-break, or Position if it's not a
+  ///          b-break.
+  StringRef::iterator skip_b_break(StringRef::iterator Position);
 
-  /// @brief Skip a single s-white[33] starting at Pos.
+  /// @brief Skip a single s-white[33] starting at Position.
   ///
   /// A s-white is 0x20 | 0x9
   ///
-  /// @returns The code unit after the s-white, or Pos if it's not a s-white.
-  StringRef::iterator skip_s_white(StringRef::iterator Pos);
+  /// @returns The code unit after the s-white, or Position if it's not a
+  ///          s-white.
+  StringRef::iterator skip_s_white(StringRef::iterator Position);
 
-  /// @brief Skip a single ns-char[34] starting at Pos.
+  /// @brief Skip a single ns-char[34] starting at Position.
   ///
   /// A ns-char is nb-char - s-white
   ///
-  /// @returns The code unit after the ns-char, or Pos if it's not a ns-char.
-  StringRef::iterator skip_ns_char(StringRef::iterator Pos);
+  /// @returns The code unit after the ns-char, or Position if it's not a
+  ///          ns-char.
+  StringRef::iterator skip_ns_char(StringRef::iterator Position);
 
   /// @brief Skip minimal well-formed code unit subsequences until Func
   ///        returns its input.
@@ -302,14 +307,14 @@ private:
   /// @returns The code unit after the last minimal well-formed code unit
   ///          subsequence that Func accepted.
   template<StringRef::iterator (Scanner::*Func)(StringRef::iterator)>
-  StringRef::iterator skip_while(StringRef::iterator Pos) {
+  StringRef::iterator skip_while(StringRef::iterator Position) {
     while (true) {
-      StringRef::iterator i = (this->*Func)(Pos);
-      if (i == Pos)
+      StringRef::iterator i = (this->*Func)(Position);
+      if (i == Position)
         break;
-      Pos = i;
+      Position = i;
     }
-    return Pos;
+    return Position;
   }
 
   /// @brief Scan ns-uri-char[39]s starting at Cur.
@@ -325,19 +330,19 @@ private:
 
   /// @brief Consume a minimal well-formed code unit subsequence starting at
   ///        \a Cur. Return false if it is not the same Unicode scalar value as
-  ///        \a expected. This updates \a Column.
-  bool consume(uint32_t expected);
+  ///        \a Expected. This updates \a Column.
+  bool consume(uint32_t Expected);
 
   /// @brief Skip \a Distance UTF-8 code units. Updates \a Cur and \a Column.
   void skip(uint32_t Distance);
 
   /// @brief Return true if the minimal well-formed code unit subsequence at
   ///        Pos is whitespace or a new line
-  bool isBlankOrBreak(StringRef::iterator Pos);
+  bool isBlankOrBreak(StringRef::iterator Position);
 
   /// @brief If IsSimpleKeyAllowed, create and push_back a new SimpleKey.
   void saveSimpleKeyCandidate( TokenQueueT::iterator Tok
-                             , unsigned Col
+                             , unsigned AtColumn
                              , bool IsRequired);
 
   /// @brief Remove simple keys that can no longer be valid simple keys.
@@ -351,11 +356,11 @@ private:
 
   /// @brief Unroll indentation in \a Indents back to \a Col. Creates BlockEnd
   ///        tokens if needed.
-  bool unrollIndent(int Col);
+  bool unrollIndent(int ToColumn);
 
   /// @brief Increase indent to \a Col. Creates \a Kind token at \a InsertPoint
   ///        if needed.
-  bool rollIndent( int Col
+  bool rollIndent( int ToColumn
                  , Token::TokenKind Kind
                  , TokenQueueT::iterator InsertPoint);
 
@@ -417,7 +422,7 @@ private:
   MemoryBuffer *InputBuffer;
 
   /// @brief The current position of the scanner.
-  StringRef::iterator Cur;
+  StringRef::iterator Current;
 
   /// @brief The end of the input (one past the last character).
   StringRef::iterator End;
@@ -461,20 +466,20 @@ private:
 } // end namespace yaml
 } // end namespace llvm
 
-bool yaml::dumpTokens(StringRef input, raw_ostream &OS) {
+bool yaml::dumpTokens(StringRef Input, raw_ostream &OS) {
   SourceMgr SM;
-  Scanner scanner(input, SM);
+  Scanner scanner(Input, SM);
   while (true) {
-    Token t = scanner.getNext();
-    switch (t.Kind) {
+    Token T = scanner.getNext();
+    switch (T.Kind) {
     case Token::TK_StreamStart:
-      OS << "Stream-Start(" << t.StreamStart.Encoding << "): ";
+      OS << "Stream-Start(" << T.StreamStart.Encoding << "): ";
       break;
     case Token::TK_StreamEnd:
       OS << "Stream-End: ";
       break;
     case Token::TK_VersionDirective:
-      OS << "Version-Directive(" << t.VersionDirective.Value << "): ";
+      OS << "Version-Directive(" << T.VersionDirective.Value << "): ";
       break;
     case Token::TK_TagDirective:
       OS << "Tag-Directive: ";
@@ -519,13 +524,13 @@ bool yaml::dumpTokens(StringRef input, raw_ostream &OS) {
       OS << "Value: ";
       break;
     case Token::TK_Scalar:
-      OS << "Scalar(" << t.Scalar.Value << "): ";
+      OS << "Scalar(" << T.Scalar.Value << "): ";
       break;
     case Token::TK_Alias:
-      OS << "Alias(" << t.Scalar.Value << "): ";
+      OS << "Alias(" << T.Scalar.Value << "): ";
       break;
     case Token::TK_Anchor:
-      OS << "Anchor(" << t.Scalar.Value << "): ";
+      OS << "Anchor(" << T.Scalar.Value << "): ";
       break;
     case Token::TK_Tag:
       OS << "Tag: ";
@@ -533,29 +538,29 @@ bool yaml::dumpTokens(StringRef input, raw_ostream &OS) {
     case Token::TK_Error:
       break;
     }
-    OS << t.Range << "\n";
-    if (t.Kind == Token::TK_StreamEnd)
+    OS << T.Range << "\n";
+    if (T.Kind == Token::TK_StreamEnd)
       break;
-    else if (t.Kind == Token::TK_Error)
+    else if (T.Kind == Token::TK_Error)
       return false;
   }
   return true;
 }
 
-bool yaml::scanTokens(StringRef input) {
+bool yaml::scanTokens(StringRef Input) {
   llvm::SourceMgr SM;
-  llvm::yaml::Scanner scanner(input, SM);
+  llvm::yaml::Scanner scanner(Input, SM);
   for (;;) {
-    llvm::yaml::Token t = scanner.getNext();
-    if (t.Kind == Token::TK_StreamEnd)
+    llvm::yaml::Token T = scanner.getNext();
+    if (T.Kind == Token::TK_StreamEnd)
       break;
-    else if (t.Kind == Token::TK_Error)
+    else if (T.Kind == Token::TK_Error)
       return false;
   }
   return true;
 }
 
-Scanner::Scanner(StringRef input, SourceMgr &sm)
+Scanner::Scanner(StringRef Input, SourceMgr &sm)
   : SM(sm)
   , Indent(-1)
   , Column(0)
@@ -565,9 +570,9 @@ Scanner::Scanner(StringRef input, SourceMgr &sm)
   , IsSimpleKeyAllowed(true)
   , IsSimpleKeyRequired(false)
   , Failed(false) {
-  InputBuffer = MemoryBuffer::getMemBuffer(input, "YAML");
+  InputBuffer = MemoryBuffer::getMemBuffer(Input, "YAML");
   SM.AddNewSourceBuffer(InputBuffer, SMLoc());
-  Cur = InputBuffer->getBufferStart();
+  Current = InputBuffer->getBufferStart();
   End = InputBuffer->getBufferEnd();
 }
 
@@ -599,7 +604,7 @@ Token &Scanner::peekNext() {
 }
 
 Token Scanner::getNext() {
-  Token ret = peekNext();
+  Token Ret = peekNext();
   // TokenQueue can be empty if there was an error getting the next token.
   if (!TokenQueue.empty())
     TokenQueue.pop_front();
@@ -610,88 +615,91 @@ Token Scanner::getNext() {
     TokenQueue.Alloc.Reset();
   }
 
-  return ret;
+  return Ret;
 }
 
-Scanner::UTF8Decoded Scanner::decodeUTF8(StringRef::iterator Pos) {
-  if ((uint8_t(*Pos) & 0x80) == 0)
-    return std::make_pair(*Pos, 1);
+Scanner::UTF8Decoded Scanner::decodeUTF8(StringRef::iterator Position) {
+  if ((uint8_t(*Position) & 0x80) == 0)
+    return std::make_pair(*Position, 1);
 
-  if (   (uint8_t(*Pos) & 0xE0) == 0xC0
-      && Pos + 1 != End
-      && uint8_t(*Pos) >= 0xC2
-      && uint8_t(*Pos) <= 0xDF
-      && uint8_t(*(Pos + 1)) >= 0x80
-      && uint8_t(*(Pos + 1)) <= 0xBF) {
-    uint32_t codepoint = uint8_t(*(Pos + 1)) & 0x3F;
-    codepoint |= uint16_t(uint8_t(*Pos) & 0x1F) << 6;
+  if (   (uint8_t(*Position) & 0xE0) == 0xC0
+      && Position + 1 != End
+      && uint8_t(*Position) >= 0xC2
+      && uint8_t(*Position) <= 0xDF
+      && uint8_t(*(Position + 1)) >= 0x80
+      && uint8_t(*(Position + 1)) <= 0xBF) {
+    uint32_t codepoint = uint8_t(*(Position + 1)) & 0x3F;
+    codepoint |= uint16_t(uint8_t(*Position) & 0x1F) << 6;
     return std::make_pair(codepoint, 2);
   }
 
-  if (   (uint8_t(*Pos) & 0xF0) == 0xE0
-      && Pos + 2 < End) {
-    if (   uint8_t(*Pos) == 0xE0
-        && (  uint8_t(*(Pos + 1)) < 0xA0
-          || uint8_t(*(Pos + 1)) > 0xBF));
-    else if (  uint8_t(*Pos) >= 0xE1
-            && uint8_t(*Pos) <= 0xEC
-            && (  uint8_t(*(Pos + 1)) < 0x80
-                || uint8_t(*(Pos + 1)) > 0xBF));
-    else if (  uint8_t(*Pos) == 0xED
-            && (  uint8_t(*(Pos + 1)) < 0x80
-                || uint8_t(*(Pos + 1)) > 0x9F));
-    else if (  uint8_t(*Pos) >= 0xEE
-            && uint8_t(*Pos) <= 0xEF
-            && (  uint8_t(*(Pos + 1)) < 0x80
-                || uint8_t(*(Pos + 1)) > 0xBF));
+  if (   (uint8_t(*Position) & 0xF0) == 0xE0
+      && Position + 2 < End) {
+    if (   uint8_t(*Position) == 0xE0
+        && (  uint8_t(*(Position + 1)) < 0xA0
+          || uint8_t(*(Position + 1)) > 0xBF));
+    else if (  uint8_t(*Position) >= 0xE1
+            && uint8_t(*Position) <= 0xEC
+            && (  uint8_t(*(Position + 1)) < 0x80
+                || uint8_t(*(Position + 1)) > 0xBF));
+    else if (  uint8_t(*Position) == 0xED
+            && (  uint8_t(*(Position + 1)) < 0x80
+                || uint8_t(*(Position + 1)) > 0x9F));
+    else if (  uint8_t(*Position) >= 0xEE
+            && uint8_t(*Position) <= 0xEF
+            && (  uint8_t(*(Position + 1)) < 0x80
+                || uint8_t(*(Position + 1)) > 0xBF));
     else {
-      if (uint8_t(*(Pos + 2)) >= 0x80 && uint8_t(*(Pos + 2)) <= 0xBF) {
-        uint32_t codepoint = uint8_t(*(Pos + 2)) & 0x3F;
-        codepoint |= uint16_t(uint8_t(*(Pos + 1)) & 0x3F) << 6;
-        codepoint |= uint16_t(uint8_t(*Pos) & 0x0F) << 12;
+      if (   uint8_t(*(Position + 2)) >= 0x80
+          && uint8_t(*(Position + 2)) <= 0xBF) {
+        uint32_t codepoint = uint8_t(*(Position + 2)) & 0x3F;
+        codepoint |= uint16_t(uint8_t(*(Position + 1)) & 0x3F) << 6;
+        codepoint |= uint16_t(uint8_t(*Position) & 0x0F) << 12;
         return std::make_pair(codepoint, 3);
       }
     }
   }
 
-  if (   (uint8_t(*Pos) & 0xF8) == 0xF0
-      && Pos + 3 < End) {
-    if (  uint8_t(*Pos) == 0xF0
-        && (  uint8_t(*(Pos + 1)) < 0x90
-          || uint8_t(*(Pos + 1)) > 0xBF));
-    else if (  uint8_t(*Pos) >= 0xF1
-            && uint8_t(*Pos) <= 0xF3
-            && (  uint8_t(*(Pos + 1)) < 0x80
-                || uint8_t(*(Pos + 1)) > 0xBF));
-    else if (  uint8_t(*Pos) == 0xF4
-            && (  uint8_t(*(Pos + 1)) < 0x80
-                || uint8_t(*(Pos + 1)) > 0x8F));
+  if (   (uint8_t(*Position) & 0xF8) == 0xF0
+      && Position + 3 < End) {
+    if (  uint8_t(*Position) == 0xF0
+        && (  uint8_t(*(Position + 1)) < 0x90
+          || uint8_t(*(Position + 1)) > 0xBF));
+    else if (  uint8_t(*Position) >= 0xF1
+            && uint8_t(*Position) <= 0xF3
+            && (  uint8_t(*(Position + 1)) < 0x80
+                || uint8_t(*(Position + 1)) > 0xBF));
+    else if (  uint8_t(*Position) == 0xF4
+            && (  uint8_t(*(Position + 1)) < 0x80
+                || uint8_t(*(Position + 1)) > 0x8F));
     else {
-      if (   uint8_t(*(Pos + 2)) >= 0x80 && uint8_t(*(Pos + 2)) <= 0xBF
-          && uint8_t(*(Pos + 3)) >= 0x80 && uint8_t(*(Pos + 3)) <= 0xBF) {
-        uint32_t codepoint = uint8_t(*(Pos + 3)) & 0x3F;
-        codepoint |= uint32_t(uint8_t(*(Pos + 2)) & 0x3F) << 6;
-        codepoint |= uint32_t(uint8_t(*(Pos + 1)) & 0x3F) << 12;
-        codepoint |= uint32_t(uint8_t(*Pos) & 0x07) << 18;
+      if (   uint8_t(*(Position + 2)) >= 0x80
+          && uint8_t(*(Position + 2)) <= 0xBF
+          && uint8_t(*(Position + 3)) >= 0x80
+          && uint8_t(*(Position + 3)) <= 0xBF) {
+        uint32_t codepoint = uint8_t(*(Position + 3)) & 0x3F;
+        codepoint |= uint32_t(uint8_t(*(Position + 2)) & 0x3F) << 6;
+        codepoint |= uint32_t(uint8_t(*(Position + 1)) & 0x3F) << 12;
+        codepoint |= uint32_t(uint8_t(*Position) & 0x07) << 18;
         return std::make_pair(codepoint, 4);
       }
     }
   }
 
   // Not valid utf-8.
-  setError("Invalid utf8 code unit", Pos);
+  setError("Invalid utf8 code unit", Position);
   return std::make_pair(0, 0);
 }
 
-StringRef::iterator Scanner::skip_nb_char(StringRef::iterator Pos) {
+StringRef::iterator Scanner::skip_nb_char(StringRef::iterator Position) {
   // Check 7 bit c-printable - b-char.
-  if (   *Pos == 0x09
-      || (*Pos >= 0x20 && *Pos <= 0x7E))
-    return Pos + 1;
+  if (   *Position == 0x09
+      || (*Position >= 0x20 && *Position <= 0x7E))
+    return Position + 1;
 
   // Check for valid utf-8.
-  if (uint8_t(*Pos) & 0x80) {
-    UTF8Decoded u8d = decodeUTF8(Pos);
+  if (uint8_t(*Position) & 0x80) {
+    UTF8Decoded u8d = decodeUTF8(Position);
     if (   u8d.second != 0
         && u8d.first != 0xFEFF
         && ( u8d.first == 0x85
@@ -701,38 +709,38 @@ StringRef::iterator Scanner::skip_nb_char(StringRef::iterator Pos) {
             && u8d.first <= 0xFFFD)
           || ( u8d.first >= 0x10000
             && u8d.first <= 0x10FFFF)))
-      return Pos + u8d.second;
+      return Position + u8d.second;
   }
-  return Pos;
+  return Position;
 }
 
-StringRef::iterator Scanner::skip_b_break(StringRef::iterator Pos) {
-  if (*Pos == 0x0D) {
-    if (Pos + 1 != End && *(Pos + 1) == 0x0A)
-      return Pos + 2;
-    return Pos + 1;
+StringRef::iterator Scanner::skip_b_break(StringRef::iterator Position) {
+  if (*Position == 0x0D) {
+    if (Position + 1 != End && *(Position + 1) == 0x0A)
+      return Position + 2;
+    return Position + 1;
   }
 
-  if (*Pos == 0x0A)
-    return Pos + 1;
-  return Pos;
+  if (*Position == 0x0A)
+    return Position + 1;
+  return Position;
 }
 
 
-StringRef::iterator Scanner::skip_s_white(StringRef::iterator Pos) {
-  if (Pos == End)
-    return Pos;
-  if (*Pos == ' ' || *Pos == '\t')
-    return Pos + 1;
-  return Pos;
+StringRef::iterator Scanner::skip_s_white(StringRef::iterator Position) {
+  if (Position == End)
+    return Position;
+  if (*Position == ' ' || *Position == '\t')
+    return Position + 1;
+  return Position;
 }
 
-StringRef::iterator Scanner::skip_ns_char(StringRef::iterator Pos) {
-  if (Pos == End)
-    return Pos;
-  if (*Pos == ' ' || *Pos == '\t')
-    return Pos;
-  return skip_nb_char(Pos);
+StringRef::iterator Scanner::skip_ns_char(StringRef::iterator Position) {
+  if (Position == End)
+    return Position;
+  if (*Position == ' ' || *Position == '\t')
+    return Position;
+  return skip_nb_char(Position);
 }
 
 static bool is_ns_hex_digit(const char C) {
@@ -752,70 +760,70 @@ static bool is_ns_word_char(const char C) {
 }
 
 StringRef Scanner::scan_ns_uri_char() {
-  StringRef::iterator Start = Cur;
+  StringRef::iterator Start = Current;
   while (true) {
-    if (Cur == End)
+    if (Current == End)
       break;
-    if ((   *Cur == '%'
-          && Cur + 2 < End
-          && is_ns_hex_digit(*(Cur + 1))
-          && is_ns_hex_digit(*(Cur + 2)))
-        || is_ns_word_char(*Cur)
-        || StringRef(Cur, 1).find_first_of("#;/?:@&=+$,_.!~*'()[]")
+    if ((   *Current == '%'
+          && Current + 2 < End
+          && is_ns_hex_digit(*(Current + 1))
+          && is_ns_hex_digit(*(Current + 2)))
+        || is_ns_word_char(*Current)
+        || StringRef(Current, 1).find_first_of("#;/?:@&=+$,_.!~*'()[]")
           != StringRef::npos) {
-      ++Cur;
+      ++Current;
       ++Column;
     } else
       break;
   }
-  return StringRef(Start, Cur - Start);
+  return StringRef(Start, Current - Start);
 }
 
 StringRef Scanner::scan_ns_plain_one_line() {
-  StringRef::iterator start = Cur;
+  StringRef::iterator start = Current;
   // The first character must already be verified.
-  ++Cur;
+  ++Current;
   while (true) {
-    if (Cur == End) {
+    if (Current == End) {
       break;
-    } else if (*Cur == ':') {
+    } else if (*Current == ':') {
       // Check if the next character is a ns-char.
-      if (Cur + 1 == End)
+      if (Current + 1 == End)
         break;
-      StringRef::iterator i = skip_ns_char(Cur + 1);
-      if (Cur + 1 != i) {
-        Cur = i;
+      StringRef::iterator i = skip_ns_char(Current + 1);
+      if (Current + 1 != i) {
+        Current = i;
         Column += 2; // Consume both the ':' and ns-char.
       } else
         break;
-    } else if (*Cur == '#') {
+    } else if (*Current == '#') {
       // Check if the previous character was a ns-char.
       // The & 0x80 check is to check for the trailing byte of a utf-8
-      if (*(Cur - 1) & 0x80 || skip_ns_char(Cur - 1) == Cur) {
-        ++Cur;
+      if (*(Current - 1) & 0x80 || skip_ns_char(Current - 1) == Current) {
+        ++Current;
         ++Column;
       } else
         break;
     } else {
-      StringRef::iterator i = skip_nb_char(Cur);
-      if (i == Cur)
+      StringRef::iterator i = skip_nb_char(Current);
+      if (i == Current)
         break;
-      Cur = i;
+      Current = i;
       ++Column;
     }
   }
-  return StringRef(start, Cur - start);
+  return StringRef(start, Current - start);
 }
 
-bool Scanner::consume(uint32_t expected) {
-  if (expected >= 0x80)
+bool Scanner::consume(uint32_t Expected) {
+  if (Expected >= 0x80)
     report_fatal_error("Not dealing with this yet");
-  if (Cur == End)
+  if (Current == End)
     return false;
-  if (uint8_t(*Cur) >= 0x80)
+  if (uint8_t(*Current) >= 0x80)
     report_fatal_error("Not dealing with this yet");
-  if (uint8_t(*Cur) == expected) {
-    ++Cur;
+  if (uint8_t(*Current) == Expected) {
+    ++Current;
     ++Column;
     return true;
   }
@@ -823,26 +831,27 @@ bool Scanner::consume(uint32_t expected) {
 }
 
 void Scanner::skip(uint32_t Distance) {
-  Cur += Distance;
+  Current += Distance;
   Column += Distance;
 }
 
-bool Scanner::isBlankOrBreak(StringRef::iterator Pos) {
-  if (Pos == End)
+bool Scanner::isBlankOrBreak(StringRef::iterator Position) {
+  if (Position == End)
     return false;
-  if (*Pos == ' ' || *Pos == '\t' || *Pos == '\r' || *Pos == '\n')
+  if (   *Position == ' ' || *Position == '\t'
+      || *Position == '\r' || *Position == '\n')
     return true;
   return false;
 }
 
 void Scanner::saveSimpleKeyCandidate( TokenQueueT::iterator Tok
-                                    , unsigned Col
+                                    , unsigned AtColumn
                                     , bool IsRequired) {
   if (IsSimpleKeyAllowed) {
     SimpleKey SK;
     SK.Tok = Tok;
     SK.Line = Line;
-    SK.Column = Col;
+    SK.Column = AtColumn;
     SK.IsRequired = IsRequired;
     SK.FlowLevel = FlowLevel;
     SimpleKeys.push_back(SK);
@@ -867,63 +876,63 @@ void Scanner::removeSimpleKeyCandidatesOnFlowLevel(unsigned Level) {
     SimpleKeys.pop_back();
 }
 
-bool Scanner::unrollIndent(int Col) {
-  Token t;
+bool Scanner::unrollIndent(int ToColumn) {
+  Token T;
   // Indentation is ignored in flow.
   if (FlowLevel != 0)
     return true;
 
-  while (Indent > Col) {
-    t.Kind = Token::TK_BlockEnd;
-    t.Range = StringRef(Cur, 1);
-    TokenQueue.push_back(t);
+  while (Indent > ToColumn) {
+    T.Kind = Token::TK_BlockEnd;
+    T.Range = StringRef(Current, 1);
+    TokenQueue.push_back(T);
     Indent = Indents.pop_back_val();
   }
 
   return true;
 }
 
-bool Scanner::rollIndent( int Col
+bool Scanner::rollIndent( int ToColumn
                         , Token::TokenKind Kind
                         , TokenQueueT::iterator InsertPoint) {
   if (FlowLevel)
     return true;
-  if (Indent < Col) {
+  if (Indent < ToColumn) {
     Indents.push_back(Indent);
-    Indent = Col;
+    Indent = ToColumn;
 
-    Token t;
-    t.Kind = Kind;
-    t.Range = StringRef(Cur, 0);
-    TokenQueue.insert(InsertPoint, t);
+    Token T;
+    T.Kind = Kind;
+    T.Range = StringRef(Current, 0);
+    TokenQueue.insert(InsertPoint, T);
   }
   return true;
 }
 
 void Scanner::scanToNextToken() {
   while (true) {
-    while (*Cur == ' ' || *Cur == '\t') {
+    while (*Current == ' ' || *Current == '\t') {
       skip(1);
     }
 
     // Skip comment.
-    if (*Cur == '#') {
+    if (*Current == '#') {
       while (true) {
         // This may skip more than one byte, thus Column is only incremented
         // for code points.
-        StringRef::iterator i = skip_nb_char(Cur);
-        if (i == Cur)
+        StringRef::iterator i = skip_nb_char(Current);
+        if (i == Current)
           break;
-        Cur = i;
+        Current = i;
         ++Column;
       }
     }
 
     // Skip EOL.
-    StringRef::iterator i = skip_b_break(Cur);
-    if (i == Cur)
+    StringRef::iterator i = skip_b_break(Current);
+    if (i == Current)
       break;
-    Cur = i;
+    Current = i;
     ++Line;
     Column = 0;
     // New lines may start a simple key.
@@ -936,12 +945,12 @@ bool Scanner::scanStreamStart() {
   IsStartOfStream = false;
 
   EncodingInfo EI = getUnicodeEncoding(currentInput());
-  Cur += EI.second;
+  Current += EI.second;
 
-  Token t;
-  t.Kind = Token::TK_StreamStart;
-  t.StreamStart.Encoding = EI.first;
-  TokenQueue.push_back(t);
+  Token T;
+  T.Kind = Token::TK_StreamStart;
+  T.StreamStart.Encoding = EI.first;
+  TokenQueue.push_back(T);
   return true;
 }
 
@@ -956,10 +965,10 @@ bool Scanner::scanStreamEnd() {
   SimpleKeys.clear();
   IsSimpleKeyAllowed = false;
 
-  Token t;
-  t.Kind = Token::TK_StreamEnd;
-  t.Range = StringRef(Cur, 0);
-  TokenQueue.push_back(t);
+  Token T;
+  T.Kind = Token::TK_StreamEnd;
+  T.Range = StringRef(Current, 0);
+  TokenQueue.push_back(T);
   return true;
 }
 
@@ -969,22 +978,22 @@ bool Scanner::scanDirective() {
   SimpleKeys.clear();
   IsSimpleKeyAllowed = false;
 
-  StringRef::iterator Start = Cur;
+  StringRef::iterator Start = Current;
   consume('%');
-  StringRef::iterator NameStart = Cur;
-  Cur = skip_while<&Scanner::skip_ns_char>(Cur);
-  StringRef Name(NameStart, Cur - NameStart);
-  Cur = skip_while<&Scanner::skip_s_white>(Cur);
+  StringRef::iterator NameStart = Current;
+  Current = skip_while<&Scanner::skip_ns_char>(Current);
+  StringRef Name(NameStart, Current - NameStart);
+  Current = skip_while<&Scanner::skip_s_white>(Current);
 
   if (Name == "YAML") {
-    StringRef::iterator VersionStart = Cur;
-    Cur = skip_while<&Scanner::skip_ns_char>(Cur);
-    StringRef Version(VersionStart, Cur - VersionStart);
-    Token t;
-    t.Kind = Token::TK_VersionDirective;
-    t.Range = StringRef(Start, Cur - Start);
-    t.VersionDirective.Value = Version;
-    TokenQueue.push_back(t);
+    StringRef::iterator VersionStart = Current;
+    Current = skip_while<&Scanner::skip_ns_char>(Current);
+    StringRef Version(VersionStart, Current - VersionStart);
+    Token T;
+    T.Kind = Token::TK_VersionDirective;
+    T.Range = StringRef(Start, Current - Start);
+    T.VersionDirective.Value = Version;
+    TokenQueue.push_back(T);
     return true;
   }
   return false;
@@ -995,21 +1004,21 @@ bool Scanner::scanDocumentIndicator(bool IsStart) {
   SimpleKeys.clear();
   IsSimpleKeyAllowed = false;
 
-  Token t;
-  t.Kind = IsStart ? Token::TK_DocumentStart : Token::TK_DocumentEnd;
-  t.Range = StringRef(Cur, 3);
+  Token T;
+  T.Kind = IsStart ? Token::TK_DocumentStart : Token::TK_DocumentEnd;
+  T.Range = StringRef(Current, 3);
   skip(3);
-  TokenQueue.push_back(t);
+  TokenQueue.push_back(T);
   return true;
 }
 
 bool Scanner::scanFlowCollectionStart(bool IsSequence) {
-  Token t;
-  t.Kind = IsSequence ? Token::TK_FlowSequenceStart
+  Token T;
+  T.Kind = IsSequence ? Token::TK_FlowSequenceStart
                       : Token::TK_FlowMappingStart;
-  t.Range = StringRef(Cur, 1);
+  T.Range = StringRef(Current, 1);
   skip(1);
-  TokenQueue.push_back(t);
+  TokenQueue.push_back(T);
 
   // [ and { may begin a simple key.
   saveSimpleKeyCandidate(TokenQueue.back(), Column - 1, false);
@@ -1023,12 +1032,12 @@ bool Scanner::scanFlowCollectionStart(bool IsSequence) {
 bool Scanner::scanFlowCollectionEnd(bool IsSequence) {
   removeSimpleKeyCandidatesOnFlowLevel(FlowLevel);
   IsSimpleKeyAllowed = false;
-  Token t;
-  t.Kind = IsSequence ? Token::TK_FlowSequenceEnd
+  Token T;
+  T.Kind = IsSequence ? Token::TK_FlowSequenceEnd
                       : Token::TK_FlowMappingEnd;
-  t.Range = StringRef(Cur, 1);
+  T.Range = StringRef(Current, 1);
   skip(1);
-  TokenQueue.push_back(t);
+  TokenQueue.push_back(T);
   if (FlowLevel)
     --FlowLevel;
   return true;
@@ -1037,11 +1046,11 @@ bool Scanner::scanFlowCollectionEnd(bool IsSequence) {
 bool Scanner::scanFlowEntry() {
   removeSimpleKeyCandidatesOnFlowLevel(FlowLevel);
   IsSimpleKeyAllowed = true;
-  Token t;
-  t.Kind = Token::TK_FlowEntry;
-  t.Range = StringRef(Cur, 1);
+  Token T;
+  T.Kind = Token::TK_FlowEntry;
+  T.Range = StringRef(Current, 1);
   skip(1);
-  TokenQueue.push_back(t);
+  TokenQueue.push_back(T);
   return true;
 }
 
@@ -1049,11 +1058,11 @@ bool Scanner::scanBlockEntry() {
   rollIndent(Column, Token::TK_BlockSequenceStart, TokenQueue.end());
   removeSimpleKeyCandidatesOnFlowLevel(FlowLevel);
   IsSimpleKeyAllowed = true;
-  Token t;
-  t.Kind = Token::TK_BlockEntry;
-  t.Range = StringRef(Cur, 1);
+  Token T;
+  T.Kind = Token::TK_BlockEntry;
+  T.Range = StringRef(Current, 1);
   skip(1);
-  TokenQueue.push_back(t);
+  TokenQueue.push_back(T);
   return true;
 }
 
@@ -1064,11 +1073,11 @@ bool Scanner::scanKey() {
   removeSimpleKeyCandidatesOnFlowLevel(FlowLevel);
   IsSimpleKeyAllowed = !FlowLevel;
 
-  Token t;
-  t.Kind = Token::TK_Key;
-  t.Range = StringRef(Cur, 1);
+  Token T;
+  T.Kind = Token::TK_Key;
+  T.Range = StringRef(Current, 1);
   skip(1);
-  TokenQueue.push_back(t);
+  TokenQueue.push_back(T);
   return true;
 }
 
@@ -1077,16 +1086,16 @@ bool Scanner::scanValue() {
   // into the token queue.
   if (!SimpleKeys.empty()) {
     SimpleKey SK = SimpleKeys.pop_back_val();
-    Token t;
-    t.Kind = Token::TK_Key;
-    t.Range = SK.Tok->Range;
+    Token T;
+    T.Kind = Token::TK_Key;
+    T.Range = SK.Tok->Range;
     TokenQueueT::iterator i, e;
     for (i = TokenQueue.begin(), e = TokenQueue.end(); i != e; ++i) {
       if (i == SK.Tok)
         break;
     }
     assert(i != e && "SimpleKey not in token queue!");
-    i = TokenQueue.insert(i, t);
+    i = TokenQueue.insert(i, T);
 
     // We may also need to add a Block-Mapping-Start token.
     rollIndent(SK.Column, Token::TK_BlockMappingStart, i);
@@ -1098,11 +1107,11 @@ bool Scanner::scanValue() {
     IsSimpleKeyAllowed = !FlowLevel;
   }
 
-  Token t;
-  t.Kind = Token::TK_Value;
-  t.Range = StringRef(Cur, 1);
+  Token T;
+  T.Kind = Token::TK_Value;
+  T.Range = StringRef(Current, 1);
   skip(1);
-  TokenQueue.push_back(t);
+  TokenQueue.push_back(T);
   return true;
 }
 
@@ -1126,48 +1135,48 @@ static bool wasEscaped(StringRef::iterator First,
 }
 
 bool Scanner::scanFlowScalar(bool IsDoubleQuoted) {
-  StringRef::iterator Start = Cur;
+  StringRef::iterator Start = Current;
   unsigned ColStart = Column;
   if (IsDoubleQuoted) {
     do {
-      ++Cur;
-      while (Cur != End && *Cur != '"')
-        ++Cur;
+      ++Current;
+      while (Current != End && *Current != '"')
+        ++Current;
       // Repeat until the previous character was not a '\' or was an escaped
       // backslash.
-    } while (*(Cur - 1) == '\\' && wasEscaped(Start + 1, Cur));
+    } while (*(Current - 1) == '\\' && wasEscaped(Start + 1, Current));
   } else {
     skip(1);
     while (true) {
       // Skip a ' followed by another '.
-      if (Cur + 1 < End && *Cur == '\'' && *(Cur + 1) == '\'') {
+      if (Current + 1 < End && *Current == '\'' && *(Current + 1) == '\'') {
         skip(2);
         continue;
-      } else if (*Cur == '\'')
+      } else if (*Current == '\'')
         break;
-      StringRef::iterator i = skip_nb_char(Cur);
-      if (i == Cur) {
-        i = skip_b_break(Cur);
-        if (i == Cur)
+      StringRef::iterator i = skip_nb_char(Current);
+      if (i == Current) {
+        i = skip_b_break(Current);
+        if (i == Current)
           break;
-        Cur = i;
+        Current = i;
         Column = 0;
         ++Line;
       } else {
         if (i == End)
           break;
-        Cur = i;
+        Current = i;
         ++Column;
       }
     }
   }
-  StringRef Value(Start + 1, Cur - (Start + 1));
+  StringRef Value(Start + 1, Current - (Start + 1));
   skip(1); // Skip ending quote.
-  Token t;
-  t.Kind = Token::TK_Scalar;
-  t.Range = StringRef(Start, Cur - Start);
-  t.Scalar.Value = Value;
-  TokenQueue.push_back(t);
+  Token T;
+  T.Kind = Token::TK_Scalar;
+  T.Range = StringRef(Start, Current - Start);
+  T.Scalar.Value = Value;
+  TokenQueue.push_back(T);
 
   saveSimpleKeyCandidate(TokenQueue.back(), ColStart, false);
 
@@ -1177,41 +1186,41 @@ bool Scanner::scanFlowScalar(bool IsDoubleQuoted) {
 }
 
 bool Scanner::scanPlainScalar() {
-  StringRef::iterator Start = Cur;
+  StringRef::iterator Start = Current;
   unsigned ColStart = Column;
   unsigned LeadingBlanks = 0;
   assert(Indent >= -1 && "Indent must be >= -1 !");
   unsigned indent = static_cast<unsigned>(Indent + 1);
   while (true) {
-    if (*Cur == '#')
+    if (*Current == '#')
       break;
 
-    while (!isBlankOrBreak(Cur)) {
-      if (  FlowLevel && *Cur == ':'
-          && !(isBlankOrBreak(Cur + 1) || *(Cur + 1) == ',')) {
-        setError("Found unexpected ':' while scanning a plain scalar", Cur);
+    while (!isBlankOrBreak(Current)) {
+      if (  FlowLevel && *Current == ':'
+          && !(isBlankOrBreak(Current + 1) || *(Current + 1) == ',')) {
+        setError("Found unexpected ':' while scanning a plain scalar", Current);
         return false;
       }
 
       // Check for the end of the plain scalar.
-      if (  (*Cur == ':' && isBlankOrBreak(Cur + 1))
+      if (  (*Current == ':' && isBlankOrBreak(Current + 1))
           || (  FlowLevel
-          && (StringRef(Cur, 1).find_first_of(",:?[]{}") != StringRef::npos)))
+          && (StringRef(Current, 1).find_first_of(",:?[]{}") != StringRef::npos)))
         break;
 
-      StringRef::iterator i = skip_nb_char(Cur);
-      if (i == Cur)
+      StringRef::iterator i = skip_nb_char(Current);
+      if (i == Current)
         break;
-      Cur = i;
+      Current = i;
       ++Column;
     }
 
     // Are we at the end?
-    if (!isBlankOrBreak(Cur))
+    if (!isBlankOrBreak(Current))
       break;
 
     // Eat blanks.
-    StringRef::iterator Tmp = Cur;
+    StringRef::iterator Tmp = Current;
     while (isBlankOrBreak(Tmp)) {
       StringRef::iterator i = skip_s_white(Tmp);
       if (i != Tmp) {
@@ -1234,17 +1243,17 @@ bool Scanner::scanPlainScalar() {
     if (!FlowLevel && Column < indent)
       break;
 
-    Cur = Tmp;
+    Current = Tmp;
   }
-  if (Start == Cur) {
+  if (Start == Current) {
     setError("Got empty plain scalar", Start);
     return false;
   }
-  Token t;
-  t.Kind = Token::TK_Scalar;
-  t.Range = StringRef(Start, Cur - Start);
-  t.Scalar.Value = t.Range;
-  TokenQueue.push_back(t);
+  Token T;
+  T.Kind = Token::TK_Scalar;
+  T.Range = StringRef(Start, Current - Start);
+  T.Scalar.Value = T.Range;
+  TokenQueue.push_back(T);
 
   // Plain scalars can be simple keys.
   saveSimpleKeyCandidate(TokenQueue.back(), ColStart, false);
@@ -1255,32 +1264,32 @@ bool Scanner::scanPlainScalar() {
 }
 
 bool Scanner::scanAliasOrAnchor(bool IsAlias) {
-  StringRef::iterator Start = Cur;
+  StringRef::iterator Start = Current;
   unsigned ColStart = Column;
   skip(1);
   while(true) {
-    if (   *Cur == '[' || *Cur == ']'
-        || *Cur == '{' || *Cur == '}'
-        || *Cur == ','
-        || *Cur == ':')
+    if (   *Current == '[' || *Current == ']'
+        || *Current == '{' || *Current == '}'
+        || *Current == ','
+        || *Current == ':')
       break;
-    StringRef::iterator i = skip_ns_char(Cur);
-    if (i == Cur)
+    StringRef::iterator i = skip_ns_char(Current);
+    if (i == Current)
       break;
-    Cur = i;
+    Current = i;
     ++Column;
   }
 
-  if (Start == Cur) {
+  if (Start == Current) {
     setError("Got empty alias or anchor", Start);
     return false;
   }
 
-  Token t;
-  t.Kind = IsAlias ? Token::TK_Alias : Token::TK_Anchor;
-  t.Range = StringRef(Start, Cur - Start);
-  t.Scalar.Value = t.Range.substr(1);
-  TokenQueue.push_back(t);
+  Token T;
+  T.Kind = IsAlias ? Token::TK_Alias : Token::TK_Anchor;
+  T.Range = StringRef(Start, Current - Start);
+  T.Scalar.Value = T.Range.substr(1);
+  TokenQueue.push_back(T);
 
   // Alias and anchors can be simple keys.
   saveSimpleKeyCandidate(TokenQueue.back(), ColStart, false);
@@ -1291,61 +1300,61 @@ bool Scanner::scanAliasOrAnchor(bool IsAlias) {
 }
 
 bool Scanner::scanBlockScalar(bool IsLiteral) {
-  StringRef::iterator Start = Cur;
+  StringRef::iterator Start = Current;
   skip(1); // Eat | or >
   while(true) {
-    StringRef::iterator i = skip_nb_char(Cur);
-    if (i == Cur) {
+    StringRef::iterator i = skip_nb_char(Current);
+    if (i == Current) {
       if (Column == 0)
         break;
-      i = skip_b_break(Cur);
-      if (i != Cur) {
+      i = skip_b_break(Current);
+      if (i != Current) {
         // We got a line break.
         Column = 0;
         ++Line;
-        Cur = i;
+        Current = i;
         continue;
       } else {
         // There was an error, which should already have been printed out.
         return false;
       }
     }
-    Cur = i;
+    Current = i;
     ++Column;
   }
 
-  if (Start == Cur) {
+  if (Start == Current) {
     setError("Got empty block scalar", Start);
     return false;
   }
 
-  Token t;
-  t.Kind = Token::TK_Scalar;
-  t.Range = StringRef(Start, Cur - Start);
-  t.Scalar.Value = t.Range;
-  TokenQueue.push_back(t);
+  Token T;
+  T.Kind = Token::TK_Scalar;
+  T.Range = StringRef(Start, Current - Start);
+  T.Scalar.Value = T.Range;
+  TokenQueue.push_back(T);
   return true;
 }
 
 bool Scanner::scanTag() {
-  StringRef::iterator Start = Cur;
+  StringRef::iterator Start = Current;
   unsigned ColStart = Column;
   skip(1); // Eat !.
-  if (Cur == End || isBlankOrBreak(Cur)); // An empty tag.
-  else if (*Cur == '<') {
+  if (Current == End || isBlankOrBreak(Current)); // An empty tag.
+  else if (*Current == '<') {
     skip(1);
-    StringRef VerbatiumTag = scan_ns_uri_char();
+    scan_ns_uri_char();
     if (!consume('>'))
       return false;
   } else {
     // FIXME: Actually parse the c-ns-shorthand-tag rule.
-    Cur = skip_while<&Scanner::skip_ns_char>(Cur);
+    Current = skip_while<&Scanner::skip_ns_char>(Current);
   }
 
-  Token t;
-  t.Kind = Token::TK_Tag;
-  t.Range = StringRef(Start, Cur - Start);
-  TokenQueue.push_back(t);
+  Token T;
+  T.Kind = Token::TK_Tag;
+  T.Range = StringRef(Start, Current - Start);
+  TokenQueue.push_back(T);
 
   // Tags can be simple keys.
   saveSimpleKeyCandidate(TokenQueue.back(), ColStart, false);
@@ -1361,94 +1370,94 @@ bool Scanner::fetchMoreTokens() {
 
   scanToNextToken();
 
-  if (Cur == End)
+  if (Current == End)
     return scanStreamEnd();
 
   removeStaleSimpleKeyCandidates();
 
   unrollIndent(Column);
 
-  if (Column == 0 && *Cur == '%')
+  if (Column == 0 && *Current == '%')
     return scanDirective();
 
-  if (Column == 0 && Cur + 4 <= End
-      && *Cur == '-'
-      && *(Cur + 1) == '-'
-      && *(Cur + 2) == '-'
-      && (Cur + 3 == End || isBlankOrBreak(Cur + 3)))
+  if (Column == 0 && Current + 4 <= End
+      && *Current == '-'
+      && *(Current + 1) == '-'
+      && *(Current + 2) == '-'
+      && (Current + 3 == End || isBlankOrBreak(Current + 3)))
     return scanDocumentIndicator(true);
 
-  if (Column == 0 && Cur + 4 <= End
-      && *Cur == '.'
-      && *(Cur + 1) == '.'
-      && *(Cur + 2) == '.'
-      && (Cur + 3 == End || isBlankOrBreak(Cur + 3)))
+  if (Column == 0 && Current + 4 <= End
+      && *Current == '.'
+      && *(Current + 1) == '.'
+      && *(Current + 2) == '.'
+      && (Current + 3 == End || isBlankOrBreak(Current + 3)))
     return scanDocumentIndicator(false);
 
-  if (*Cur == '[')
+  if (*Current == '[')
     return scanFlowCollectionStart(true);
 
-  if (*Cur == '{')
+  if (*Current == '{')
     return scanFlowCollectionStart(false);
 
-  if (*Cur == ']')
+  if (*Current == ']')
     return scanFlowCollectionEnd(true);
 
-  if (*Cur == '}')
+  if (*Current == '}')
     return scanFlowCollectionEnd(false);
 
-  if (*Cur == ',')
+  if (*Current == ',')
     return scanFlowEntry();
 
-  if (*Cur == '-' && isBlankOrBreak(Cur + 1))
+  if (*Current == '-' && isBlankOrBreak(Current + 1))
     return scanBlockEntry();
 
-  if (*Cur == '?' && (FlowLevel || isBlankOrBreak(Cur + 1)))
+  if (*Current == '?' && (FlowLevel || isBlankOrBreak(Current + 1)))
     return scanKey();
 
-  if (*Cur == ':' && (FlowLevel || isBlankOrBreak(Cur + 1)))
+  if (*Current == ':' && (FlowLevel || isBlankOrBreak(Current + 1)))
     return scanValue();
 
-  if (*Cur == '*')
+  if (*Current == '*')
     return scanAliasOrAnchor(true);
 
-  if (*Cur == '&')
+  if (*Current == '&')
     return scanAliasOrAnchor(false);
 
-  if (*Cur == '!')
+  if (*Current == '!')
     return scanTag();
 
-  if (*Cur == '|' && !FlowLevel)
+  if (*Current == '|' && !FlowLevel)
     return scanBlockScalar(true);
 
-  if (*Cur == '>' && !FlowLevel)
+  if (*Current == '>' && !FlowLevel)
     return scanBlockScalar(false);
 
-  if (*Cur == '\'')
+  if (*Current == '\'')
     return scanFlowScalar(false);
 
-  if (*Cur == '"')
+  if (*Current == '"')
     return scanFlowScalar(true);
 
   // Get a plain scalar.
-  StringRef FirstChar(Cur, 1);
-  if (!(isBlankOrBreak(Cur)
+  StringRef FirstChar(Current, 1);
+  if (!(isBlankOrBreak(Current)
         || FirstChar.find_first_of("-?:,[]{}#&*!|>'\"%@`") != StringRef::npos)
-      || (*Cur == '-' && !isBlankOrBreak(Cur + 1))
-      || (!FlowLevel && (*Cur == '?' || *Cur == ':')
-          && isBlankOrBreak(Cur + 1))
-      || (!FlowLevel && *Cur == ':'
-                      && Cur + 2 < End
-                      && *(Cur + 1) == ':'
-                      && !isBlankOrBreak(Cur + 2)))
+      || (*Current == '-' && !isBlankOrBreak(Current + 1))
+      || (!FlowLevel && (*Current == '?' || *Current == ':')
+          && isBlankOrBreak(Current + 1))
+      || (!FlowLevel && *Current == ':'
+                      && Current + 2 < End
+                      && *(Current + 1) == ':'
+                      && !isBlankOrBreak(Current + 2)))
     return scanPlainScalar();
 
   setError("Unrecognized character while tokenizing.");
   return false;
 }
 
-Stream::Stream(StringRef input, SourceMgr &sm)
-  : scanner(new Scanner(input, sm))
+Stream::Stream(StringRef Input, SourceMgr &SM)
+  : scanner(new Scanner(Input, SM))
   , CurrentDoc(0) {}
 
 Stream::~Stream() { delete CurrentDoc; }
@@ -1585,26 +1594,26 @@ void MappingNode::increment() {
       return;
     }
   }
-  Token t = peekNext();
-  if (t.Kind == Token::TK_Key || t.Kind == Token::TK_Scalar) {
+  Token T = peekNext();
+  if (T.Kind == Token::TK_Key || T.Kind == Token::TK_Scalar) {
     // KeyValueNode eats the TK_Key. That way it can detect null keys.
     CurrentEntry = new (getAllocator().Allocate<KeyValueNode>())
       KeyValueNode(Doc);
   } else if (Type == MT_Block) {
-    switch (t.Kind) {
+    switch (T.Kind) {
     case Token::TK_BlockEnd:
       getNext();
       IsAtEnd = true;
       CurrentEntry = 0;
       break;
     default:
-      setError("Unexpected token. Expected Key or Block End", t);
+      setError("Unexpected token. Expected Key or Block End", T);
     case Token::TK_Error:
       IsAtEnd = true;
       CurrentEntry = 0;
     }
   } else {
-    switch (t.Kind) {
+    switch (T.Kind) {
     case Token::TK_FlowEntry:
       // Eat the flow entry and recurse.
       getNext();
@@ -1619,7 +1628,7 @@ void MappingNode::increment() {
     default:
       setError( "Unexpected token. Expected Key, Flow Entry, or Flow "
                 "Mapping End."
-              , t);
+              , T);
       IsAtEnd = true;
       CurrentEntry = 0;
     }
@@ -1634,9 +1643,9 @@ void SequenceNode::increment() {
   }
   if (CurrentEntry)
     CurrentEntry->skip();
-  Token t = peekNext();
+  Token T = peekNext();
   if (SeqType == ST_Block) {
-    switch (t.Kind) {
+    switch (T.Kind) {
     case Token::TK_BlockEntry:
       getNext();
       CurrentEntry = parseBlockNode();
@@ -1652,13 +1661,13 @@ void SequenceNode::increment() {
       break;
     default:
       setError( "Unexpected token. Expected Block Entry or Block End."
-              , t);
+              , T);
     case Token::TK_Error:
       IsAtEnd = true;
       CurrentEntry = 0;
     }
   } else if (SeqType == ST_Indentless) {
-    switch (t.Kind) {
+    switch (T.Kind) {
     case Token::TK_BlockEntry:
       getNext();
       CurrentEntry = parseBlockNode();
@@ -1673,7 +1682,7 @@ void SequenceNode::increment() {
       CurrentEntry = 0;
     }
   } else if (SeqType == ST_Flow) {
-    switch (t.Kind) {
+    switch (T.Kind) {
     case Token::TK_FlowEntry:
       // Eat the flow entry and recurse.
       getNext();
@@ -1689,14 +1698,14 @@ void SequenceNode::increment() {
     case Token::TK_StreamEnd:
     case Token::TK_DocumentEnd:
     case Token::TK_DocumentStart:
-      setError("Could not find closing ]!", t);
+      setError("Could not find closing ]!", T);
       // Set this to end iterator.
       IsAtEnd = true;
       CurrentEntry = 0;
       break;
     default:
       if (!WasPreviousTokenFlowEntry) {
-        setError("Expected , between entries!", t);
+        setError("Expected , between entries!", T);
         IsAtEnd = true;
         CurrentEntry = 0;
         break;
@@ -1753,32 +1762,32 @@ bool Document::failed() const {
 }
 
 Node *Document::parseBlockNode() {
-  Token t = peekNext();
+  Token T = peekNext();
   // Handle properties.
   Token AnchorInfo;
 parse_property:
-  switch (t.Kind) {
+  switch (T.Kind) {
   case Token::TK_Alias:
     getNext();
     return new (NodeAllocator.Allocate<AliasNode>())
-      AliasNode(this, t.Scalar.Value);
+      AliasNode(this, T.Scalar.Value);
   case Token::TK_Anchor:
     if (AnchorInfo.Kind == Token::TK_Anchor) {
-      setError("Already encountered an anchor for this node!", t);
+      setError("Already encountered an anchor for this node!", T);
       return 0;
     }
     AnchorInfo = getNext(); // Consume TK_Anchor.
-    t = peekNext();
+    T = peekNext();
     goto parse_property;
   case Token::TK_Tag:
     getNext(); // Skip TK_Tag.
-    t = peekNext();
+    T = peekNext();
     goto parse_property;
   default:
     break;
   }
 
-  switch (t.Kind) {
+  switch (T.Kind) {
   case Token::TK_BlockEntry:
     // We got an unindented BlockEntry sequence. This is not terminated with
     // a BlockEnd.
@@ -1806,7 +1815,7 @@ parse_property:
   case Token::TK_Scalar:
     getNext();
     return new (NodeAllocator.Allocate<ScalarNode>())
-      ScalarNode(this, AnchorInfo.Scalar.Value, t.Scalar.Value);
+      ScalarNode(this, AnchorInfo.Scalar.Value, T.Scalar.Value);
   case Token::TK_Key:
     // Don't eat the TK_Key, KeyValueNode expects it.
     return new (NodeAllocator.Allocate<MappingNode>())
@@ -1828,11 +1837,11 @@ parse_property:
 bool Document::parseDirectives() {
   bool isDirective = false;
   while (true) {
-    Token t = peekNext();
-    if (t.Kind == Token::TK_TagDirective) {
+    Token T = peekNext();
+    if (T.Kind == Token::TK_TagDirective) {
       handleTagDirective(getNext());
       isDirective = true;
-    } else if (t.Kind == Token::TK_VersionDirective) {
+    } else if (T.Kind == Token::TK_VersionDirective) {
       stream.handleYAMLDirective(getNext());
       isDirective = true;
     } else
@@ -1842,9 +1851,9 @@ bool Document::parseDirectives() {
 }
 
 bool Document::expectToken(int TK) {
-  Token t = getNext();
-  if (t.Kind != TK) {
-    setError("Unexpected token", t);
+  Token T = getNext();
+  if (T.Kind != TK) {
+    setError("Unexpected token", T);
     return false;
   }
   return true;

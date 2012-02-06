@@ -18,7 +18,7 @@
 //    * BOMs anywhere other than the first Unicode scalar value in the file.
 //
 //  The most important class here is Stream. This represents a YAML stream with
-//  potentially multiple documents.
+//  0, 1, or many documents.
 //
 //  SourceMgr sm;
 //  StringRef input = getInput();
@@ -60,18 +60,18 @@ struct Token;
 
 /// @brief Dump all the tokens in this stream to OS.
 /// @returns true if there was an error, false otherwise.
-bool dumpTokens(StringRef input, raw_ostream &OS);
+bool dumpTokens(StringRef Input, raw_ostream &);
 
 /// @brief Scans all tokens in input without outputting anything. This is used
 ///        for benchmarking the tokenizer.
 /// @returns true if there was an error, false otherwise.
-bool scanTokens(StringRef input);
+bool scanTokens(StringRef Input);
 
 /// @brief This class represents a YAML stream potentially containing multiple
 ///        documents.
 class Stream {
 public:
-  Stream(StringRef input, SourceMgr &sm);
+  Stream(StringRef Input, SourceMgr &);
   ~Stream();
 
   document_iterator begin();
@@ -90,7 +90,7 @@ private:
   friend class Document;
 
   /// @brief Validate a %YAML x.x directive.
-  void handleYAMLDirective(const Token &t);
+  void handleYAMLDirective(const Token &);
 };
 
 /// @brief Abstract base class for all Nodes.
@@ -105,7 +105,7 @@ public:
     NK_Alias
   };
 
-  Node(unsigned int Type, Document *D, StringRef Anchor);
+  Node(unsigned int Type, Document *, StringRef Anchor);
   virtual ~Node();
 
   /// @brief Get the value of the anchor attached to this node. If it does not
@@ -117,7 +117,7 @@ public:
   Token getNext();
   Node *parseBlockNode();
   BumpPtrAllocator &getAllocator();
-  void setError(const Twine &Msg, Token &Tok);
+  void setError(const Twine &Message, Token &Location);
   bool failed() const;
 
   virtual void skip() {};
@@ -139,8 +139,8 @@ public:
   NullNode(Document *D) : Node(NK_Null, D, StringRef()) {}
 
   static inline bool classof(const NullNode *) { return true; }
-  static inline bool classof(const Node *n) {
-    return n->getType() == NK_Null;
+  static inline bool classof(const Node *N) {
+    return N->getType() == NK_Null;
   }
 };
 
@@ -159,8 +159,8 @@ public:
   StringRef getRawValue() const { return Value; }
 
   static inline bool classof(const ScalarNode *) { return true; }
-  static inline bool classof(const Node *n) {
-    return n->getType() == NK_Scalar;
+  static inline bool classof(const Node *N) {
+    return N->getType() == NK_Scalar;
   }
 
 private:
@@ -199,8 +199,8 @@ public:
   }
 
   static inline bool classof(const KeyValueNode *) { return true; }
-  static inline bool classof(const Node *n) {
-    return n->getType() == NK_KeyValue;
+  static inline bool classof(const Node *N) {
+    return N->getType() == NK_KeyValue;
   }
 
 private:
@@ -287,9 +287,9 @@ public:
     MT_Inline //< An inline mapping node is used for "[key: value]".
   };
 
-  MappingNode(Document *D, StringRef Anchor, MappingType T)
+  MappingNode(Document *D, StringRef Anchor, MappingType MT)
     : Node(NK_Mapping, D, Anchor)
-    , Type(T)
+    , Type(MT)
     , IsAtBeginning(true)
     , IsAtEnd(false)
     , CurrentEntry(0)
@@ -311,8 +311,8 @@ public:
   }
 
   static inline bool classof(const MappingNode *) { return true; }
-  static inline bool classof(const Node *n) {
-    return n->getType() == NK_Mapping;
+  static inline bool classof(const Node *N) {
+    return N->getType() == NK_Mapping;
   }
 
 private:
@@ -330,7 +330,7 @@ private:
 /// This parses the YAML stream as increment() is called.
 class SequenceNode : public Node {
 public:
-  enum Type {
+  enum SequenceType {
     ST_Block,
     ST_Flow,
     // Use for:
@@ -343,9 +343,9 @@ public:
     ST_Indentless
   };
 
-  SequenceNode(Document *D, StringRef Anchor, Type T)
+  SequenceNode(Document *D, StringRef Anchor, SequenceType ST)
     : Node(NK_Sequence, D, Anchor)
-    , SeqType(T)
+    , SeqType(ST)
     , IsAtBeginning(true)
     , IsAtEnd(false)
     , WasPreviousTokenFlowEntry(true) // Start with an imaginary ','.
@@ -370,12 +370,12 @@ public:
   }
 
   static inline bool classof(const SequenceNode *) { return true; }
-  static inline bool classof(const Node *n) {
-    return n->getType() == NK_Sequence;
+  static inline bool classof(const Node *N) {
+    return N->getType() == NK_Sequence;
   }
 
 private:
-  Type SeqType;
+  SequenceType SeqType;
   bool IsAtBeginning;
   bool IsAtEnd;
   bool WasPreviousTokenFlowEntry;
@@ -392,8 +392,8 @@ public:
   Node *getTarget();
 
   static inline bool classof(const ScalarNode *) { return true; }
-  static inline bool classof(const Node *n) {
-    return n->getType() == NK_Alias;
+  static inline bool classof(const Node *N) {
+    return N->getType() == NK_Alias;
   }
 
 private:
@@ -407,7 +407,7 @@ public:
   /// @brief Root for parsing a node. Returns a single node.
   Node *parseBlockNode();
 
-  Document(Stream &s);
+  Document(Stream &ParentStream);
 
   /// @brief Finish parsing the current document and return true if there are
   ///        more. Return false otherwise.
@@ -437,10 +437,10 @@ private:
 
   Token &peekNext();
   Token getNext();
-  void setError(const Twine &Msg, Token &Tok);
+  void setError(const Twine &Message, Token &Location);
   bool failed() const;
 
-  void handleTagDirective(const Token &t) {
+  void handleTagDirective(const Token &Tag) {
     // TODO: Track tags.
   }
 
@@ -455,10 +455,10 @@ private:
 class document_iterator {
 public:
   document_iterator() : Doc(NullDoc) {}
-  document_iterator(Document *&d) : Doc(d) {}
+  document_iterator(Document *&D) : Doc(D) {}
 
-  bool operator !=(const document_iterator &other) {
-    return Doc != other.Doc;
+  bool operator !=(const document_iterator &Other) {
+    return Doc != Other.Doc;
   }
 
   document_iterator operator ++() {
@@ -466,9 +466,9 @@ public:
       delete Doc;
       Doc = 0;
     } else {
-      Stream &s = Doc->stream;
+      Stream &S = Doc->stream;
       delete Doc;
-      Doc = new Document(s);
+      Doc = new Document(S);
     }
     return *this;
   }
