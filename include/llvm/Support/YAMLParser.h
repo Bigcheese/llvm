@@ -67,6 +67,9 @@ bool dumpTokens(StringRef Input, raw_ostream &);
 /// @returns true if there was an error, false otherwise.
 bool scanTokens(StringRef Input);
 
+/// @brief Escape \a Input for a double quoted scalar.
+std::string escape(StringRef Input);
+
 /// @brief This class represents a YAML stream potentially containing multiple
 ///        documents.
 class Stream {
@@ -157,6 +160,13 @@ public:
   // is the exact bytes that are contained in the file (after conversion to
   // utf8).
   StringRef getRawValue() const { return Value; }
+
+  /// @brief Gets the value of this node as a StringRef.
+  ///
+  /// @param Storage is used to store the content of the returned StringRef iff
+  ///        it requires any modifcation from how it appeared in the source.
+  ///        This happens with escaped characters and multi-line literals.
+  StringRef getValue(SmallVectorImpl<char> &Storage) const;
 
   static inline bool classof(const ScalarNode *) { return true; }
   static inline bool classof(const Node *N) {

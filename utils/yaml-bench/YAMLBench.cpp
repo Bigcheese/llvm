@@ -13,6 +13,7 @@
 //===----------------------------------------------------------------------===//
 
 
+#include "llvm/ADT/SmallString.h"
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/MemoryBuffer.h"
 #include "llvm/Support/raw_ostream.h"
@@ -72,7 +73,8 @@ void dumpNode( yaml::Node *n
   if (!Anchor.empty())
     outs() << "&" << Anchor << " ";
   if (yaml::ScalarNode *sn = dyn_cast<yaml::ScalarNode>(n)) {
-    outs() << "!!str \"" << sn->getRawValue() << "\"";
+    SmallString<32> Storage;
+    outs() << "!!str \"" << yaml::escape(sn->getValue(Storage)) << "\"";
   } else if (yaml::SequenceNode *sn = dyn_cast<yaml::SequenceNode>(n)) {
     outs() << "!!seq [\n";
     ++Indent;

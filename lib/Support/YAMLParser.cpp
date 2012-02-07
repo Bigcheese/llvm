@@ -15,7 +15,9 @@
 
 #include "llvm/ADT/ilist.h"
 #include "llvm/ADT/ilist_node.h"
+#include "llvm/ADT/SmallString.h"
 #include "llvm/ADT/SmallVector.h"
+#include "llvm/ADT/StringExtras.h"
 #include "llvm/ADT/Twine.h"
 #include "llvm/Support/ErrorHandling.h"
 #include "llvm/Support/MemoryBuffer.h"
@@ -189,6 +191,84 @@ struct SimpleKey {
   }
 };
 
+/// @brief The Unicode scalar value of a UTF-8 minimal well-formed code unit
+///        subsequence and the subsequence's length in code units (uint8_t).
+///        A length of 0 represents an error.
+typedef std::pair<uint32_t, unsigned> UTF8Decoded;
+
+UTF8Decoded decodeUTF8(StringRef Range) {
+  StringRef::iterator Position = Range.begin();
+  StringRef::iterator End = Range.end();
+  if ((uint8_t(*Position) & 0x80) == 0)
+    return std::make_pair(*Position, 1);
+
+  if (   (uint8_t(*Position) & 0xE0) == 0xC0
+      && Position + 1 != End
+      && uint8_t(*Position) >= 0xC2
+      && uint8_t(*Position) <= 0xDF
+      && uint8_t(*(Position + 1)) >= 0x80
+      && uint8_t(*(Position + 1)) <= 0xBF) {
+    uint32_t codepoint = uint8_t(*(Position + 1)) & 0x3F;
+    codepoint |= uint16_t(uint8_t(*Position) & 0x1F) << 6;
+    return std::make_pair(codepoint, 2);
+  }
+
+  if (   (uint8_t(*Position) & 0xF0) == 0xE0
+      && Position + 2 < End) {
+    if (   uint8_t(*Position) == 0xE0
+        && (  uint8_t(*(Position + 1)) < 0xA0
+          || uint8_t(*(Position + 1)) > 0xBF));
+    else if (  uint8_t(*Position) >= 0xE1
+            && uint8_t(*Position) <= 0xEC
+            && (  uint8_t(*(Position + 1)) < 0x80
+                || uint8_t(*(Position + 1)) > 0xBF));
+    else if (  uint8_t(*Position) == 0xED
+            && (  uint8_t(*(Position + 1)) < 0x80
+                || uint8_t(*(Position + 1)) > 0x9F));
+    else if (  uint8_t(*Position) >= 0xEE
+            && uint8_t(*Position) <= 0xEF
+            && (  uint8_t(*(Position + 1)) < 0x80
+                || uint8_t(*(Position + 1)) > 0xBF));
+    else {
+      if (   uint8_t(*(Position + 2)) >= 0x80
+          && uint8_t(*(Position + 2)) <= 0xBF) {
+        uint32_t codepoint = uint8_t(*(Position + 2)) & 0x3F;
+        codepoint |= uint16_t(uint8_t(*(Position + 1)) & 0x3F) << 6;
+        codepoint |= uint16_t(uint8_t(*Position) & 0x0F) << 12;
+        return std::make_pair(codepoint, 3);
+      }
+    }
+  }
+
+  if (   (uint8_t(*Position) & 0xF8) == 0xF0
+      && Position + 3 < End) {
+    if (  uint8_t(*Position) == 0xF0
+        && (  uint8_t(*(Position + 1)) < 0x90
+          || uint8_t(*(Position + 1)) > 0xBF));
+    else if (  uint8_t(*Position) >= 0xF1
+            && uint8_t(*Position) <= 0xF3
+            && (  uint8_t(*(Position + 1)) < 0x80
+                || uint8_t(*(Position + 1)) > 0xBF));
+    else if (  uint8_t(*Position) == 0xF4
+            && (  uint8_t(*(Position + 1)) < 0x80
+                || uint8_t(*(Position + 1)) > 0x8F));
+    else {
+      if (   uint8_t(*(Position + 2)) >= 0x80
+          && uint8_t(*(Position + 2)) <= 0xBF
+          && uint8_t(*(Position + 3)) >= 0x80
+          && uint8_t(*(Position + 3)) <= 0xBF) {
+        uint32_t codepoint = uint8_t(*(Position + 3)) & 0x3F;
+        codepoint |= uint32_t(uint8_t(*(Position + 2)) & 0x3F) << 6;
+        codepoint |= uint32_t(uint8_t(*(Position + 1)) & 0x3F) << 12;
+        codepoint |= uint32_t(uint8_t(*Position) & 0x07) << 18;
+        return std::make_pair(codepoint, 4);
+      }
+    }
+  }
+
+  return std::make_pair(0, 0);
+}
+
 /// @brief Scans YAML tokens from a MemoryBuffer.
 class Scanner {
 public:
@@ -230,18 +310,15 @@ private:
     return StringRef(Current, End - Current);
   }
 
-  /// @brief The Unicode scalar value of a UTF-8 minimal well-formed code unit
-  ///        subsequence and the subsequence's length in code units (uint8_t).
-  ///        A length of 0 represents an error.
-  typedef std::pair<uint32_t, unsigned> UTF8Decoded;
-
   /// @brief Decode a UTF-8 minimal well-formed code unit subsequence starting
   ///        at \a Position.
   ///
   /// If the UTF-8 code units starting at Position do not form a well-formed
   /// code unit subsequence, then the Unicode scalar value is 0, and the length
   /// is 0.
-  UTF8Decoded decodeUTF8(StringRef::iterator Position);
+  UTF8Decoded decodeUTF8(StringRef::iterator Position) {
+    return yaml::decodeUTF8(StringRef(Position, End - Position));
+  }
 
   // The following functions are based on the gramar rules in the YAML spec. The
   // style of the function names it meant to closely match how they are written
@@ -555,6 +632,61 @@ bool yaml::scanTokens(StringRef Input) {
   return true;
 }
 
+std::string yaml::escape(StringRef Input) {
+  std::string EscapedInput;
+  for (StringRef::iterator i = Input.begin(), e = Input.end(); i != e; ++i) {
+    if (*i == '\\')
+      EscapedInput += "\\\\";
+    else if (*i == '"')
+      EscapedInput += "\\\"";
+    else if (*i == 0)
+      EscapedInput += "\\0";
+    else if (*i == 0x07)
+      EscapedInput += "\\a";
+    else if (*i == 0x08)
+      EscapedInput += "\\b";
+    else if (*i == 0x09)
+      EscapedInput += "\\t";
+    else if (*i == 0x0A)
+      EscapedInput += "\\n";
+    else if (*i == 0x0B)
+      EscapedInput += "\\v";
+    else if (*i == 0x0C)
+      EscapedInput += "\\f";
+    else if (*i == 0x0D)
+      EscapedInput += "\\r";
+    else if (*i == 0x1B)
+      EscapedInput += "\\e";
+    else if (*i >= 0 && *i < 0x20) { // Control characters not handled above.
+      std::string HexStr = utohexstr(*i);
+      EscapedInput += "\\x" + std::string(HexStr.size() - 2, '0') + HexStr;
+    } else if (*i & 0x80) { // utf8
+      UTF8Decoded UnicodeScalarValue
+        = decodeUTF8(StringRef(i, Input.end() - i));
+      if (UnicodeScalarValue.first == 0x85)
+        EscapedInput += "\\N";
+      else if (UnicodeScalarValue.first == 0xA0)
+        EscapedInput += "\\_";
+      else if (UnicodeScalarValue.first == 0x2028)
+        EscapedInput += "\\L";
+      else if (UnicodeScalarValue.first == 0x2029)
+        EscapedInput += "\\P";
+      else {
+        std::string HexStr = utohexstr(UnicodeScalarValue.first);
+        if (HexStr.size() <= 2)
+          EscapedInput += "\\x" + std::string(HexStr.size() - 2, '0') + HexStr;
+        else if (HexStr.size() <= 4)
+          EscapedInput += "\\u" + std::string(HexStr.size() - 4, '0') + HexStr;
+        else if (HexStr.size() <= 8)
+          EscapedInput += "\\U" + std::string(HexStr.size() - 8, '0') + HexStr;
+      }
+      i += UnicodeScalarValue.second - 1;
+    } else
+      EscapedInput.push_back(*i);
+  }
+  return EscapedInput;
+}
+
 Scanner::Scanner(StringRef Input, SourceMgr &sm)
   : SM(sm)
   , Indent(-1)
@@ -611,79 +743,6 @@ Token Scanner::getNext() {
   }
 
   return Ret;
-}
-
-Scanner::UTF8Decoded Scanner::decodeUTF8(StringRef::iterator Position) {
-  if ((uint8_t(*Position) & 0x80) == 0)
-    return std::make_pair(*Position, 1);
-
-  if (   (uint8_t(*Position) & 0xE0) == 0xC0
-      && Position + 1 != End
-      && uint8_t(*Position) >= 0xC2
-      && uint8_t(*Position) <= 0xDF
-      && uint8_t(*(Position + 1)) >= 0x80
-      && uint8_t(*(Position + 1)) <= 0xBF) {
-    uint32_t codepoint = uint8_t(*(Position + 1)) & 0x3F;
-    codepoint |= uint16_t(uint8_t(*Position) & 0x1F) << 6;
-    return std::make_pair(codepoint, 2);
-  }
-
-  if (   (uint8_t(*Position) & 0xF0) == 0xE0
-      && Position + 2 < End) {
-    if (   uint8_t(*Position) == 0xE0
-        && (  uint8_t(*(Position + 1)) < 0xA0
-          || uint8_t(*(Position + 1)) > 0xBF));
-    else if (  uint8_t(*Position) >= 0xE1
-            && uint8_t(*Position) <= 0xEC
-            && (  uint8_t(*(Position + 1)) < 0x80
-                || uint8_t(*(Position + 1)) > 0xBF));
-    else if (  uint8_t(*Position) == 0xED
-            && (  uint8_t(*(Position + 1)) < 0x80
-                || uint8_t(*(Position + 1)) > 0x9F));
-    else if (  uint8_t(*Position) >= 0xEE
-            && uint8_t(*Position) <= 0xEF
-            && (  uint8_t(*(Position + 1)) < 0x80
-                || uint8_t(*(Position + 1)) > 0xBF));
-    else {
-      if (   uint8_t(*(Position + 2)) >= 0x80
-          && uint8_t(*(Position + 2)) <= 0xBF) {
-        uint32_t codepoint = uint8_t(*(Position + 2)) & 0x3F;
-        codepoint |= uint16_t(uint8_t(*(Position + 1)) & 0x3F) << 6;
-        codepoint |= uint16_t(uint8_t(*Position) & 0x0F) << 12;
-        return std::make_pair(codepoint, 3);
-      }
-    }
-  }
-
-  if (   (uint8_t(*Position) & 0xF8) == 0xF0
-      && Position + 3 < End) {
-    if (  uint8_t(*Position) == 0xF0
-        && (  uint8_t(*(Position + 1)) < 0x90
-          || uint8_t(*(Position + 1)) > 0xBF));
-    else if (  uint8_t(*Position) >= 0xF1
-            && uint8_t(*Position) <= 0xF3
-            && (  uint8_t(*(Position + 1)) < 0x80
-                || uint8_t(*(Position + 1)) > 0xBF));
-    else if (  uint8_t(*Position) == 0xF4
-            && (  uint8_t(*(Position + 1)) < 0x80
-                || uint8_t(*(Position + 1)) > 0x8F));
-    else {
-      if (   uint8_t(*(Position + 2)) >= 0x80
-          && uint8_t(*(Position + 2)) <= 0xBF
-          && uint8_t(*(Position + 3)) >= 0x80
-          && uint8_t(*(Position + 3)) <= 0xBF) {
-        uint32_t codepoint = uint8_t(*(Position + 3)) & 0x3F;
-        codepoint |= uint32_t(uint8_t(*(Position + 2)) & 0x3F) << 6;
-        codepoint |= uint32_t(uint8_t(*(Position + 1)) & 0x3F) << 12;
-        codepoint |= uint32_t(uint8_t(*Position) & 0x07) << 18;
-        return std::make_pair(codepoint, 4);
-      }
-    }
-  }
-
-  // Not valid utf-8.
-  setError("Invalid utf8 code unit", Position);
-  return std::make_pair(0, 0);
 }
 
 StringRef::iterator Scanner::skip_nb_char(StringRef::iterator Position) {
@@ -1505,6 +1564,193 @@ void Node::setError(const Twine &Msg, Token &Tok) {
 
 bool Node::failed() const {
   return Doc->failed();
+}
+
+SmallString<4> encodeUTF8(uint32_t UnicodeScalarValue) {
+  SmallString<4> UTF8Subsequence;
+  if (UnicodeScalarValue <= 0x7F) {
+    UTF8Subsequence.push_back(UnicodeScalarValue & 0x7F);
+  } else if (UnicodeScalarValue <= 0x7FF) {
+    uint8_t FirstByte = 0xC0 | ((UnicodeScalarValue & 0x7C0) >> 6);
+    uint8_t SecondByte = 0x80 | (UnicodeScalarValue & 0x3F);
+    UTF8Subsequence.push_back(FirstByte);
+    UTF8Subsequence.push_back(SecondByte);
+  } else if (UnicodeScalarValue <= 0xFFFF) {
+    uint8_t FirstByte = 0xE0 | ((UnicodeScalarValue & 0xF000) >> 12);
+    uint8_t SecondByte = 0x80 | ((UnicodeScalarValue & 0xFC0) >> 6);
+    uint8_t ThirdByte = 0x80 | (UnicodeScalarValue & 0x3F);
+    UTF8Subsequence.push_back(FirstByte);
+    UTF8Subsequence.push_back(SecondByte);
+    UTF8Subsequence.push_back(ThirdByte);
+  } else if (UnicodeScalarValue <= 0x10FFFF) {
+    uint8_t FirstByte = 0xF0 | ((UnicodeScalarValue & 0x1F0000) >> 18);
+    uint8_t SecondByte = 0x80 | ((UnicodeScalarValue & 0x3F000) >> 12);
+    uint8_t ThirdByte = 0x80 | ((UnicodeScalarValue & 0xFC0) >> 6);
+    uint8_t FourthByte = 0x80 | (UnicodeScalarValue & 0x3F);
+    UTF8Subsequence.push_back(FirstByte);
+    UTF8Subsequence.push_back(SecondByte);
+    UTF8Subsequence.push_back(ThirdByte);
+    UTF8Subsequence.push_back(FourthByte);
+  }
+  return UTF8Subsequence;
+}
+
+StringRef ScalarNode::getValue(SmallVectorImpl<char> &Storage) const {
+  // TODO: Handle newlines properly. We need to remove leading whitespace.
+  if (Value[0] == '"') { // Double quoted.
+    // Search for characters that would require rebuilding the value.
+    StringRef UnquotedValue = Value.substr(1, Value.size() - 2);
+    if (UnquotedValue.find_first_of("\\\r\n") != StringRef::npos) {
+      // Use Storage to build proper value.
+      Storage.clear();
+      Storage.reserve(UnquotedValue.size());
+      while (!UnquotedValue.empty()) {
+        // Get next escaped char.
+        StringRef::size_type i = UnquotedValue.find_first_of("\\\r\n");
+        // Insert all previous chars into Storage.
+        StringRef Valid(UnquotedValue.begin(), i);
+        Storage.insert(Storage.end(), Valid.begin(), Valid.end());
+        // Chop off inserted chars.
+        UnquotedValue = UnquotedValue.substr(i);
+
+        assert(!UnquotedValue.empty() && "Can't be empty!");
+
+        // Parse escape or line break.
+        switch (UnquotedValue[0]) {
+        case '\r':
+        case '\n':
+          Storage.push_back('\n');
+          if (   UnquotedValue.size() > 1
+              && (UnquotedValue[1] == '\r' || UnquotedValue[1] == '\n'))
+            UnquotedValue = UnquotedValue.substr(1);
+          UnquotedValue = UnquotedValue.substr(1);
+          break;
+        default:
+          if (UnquotedValue.size() == 1)
+            // TODO: Report error.
+            break;
+          UnquotedValue = UnquotedValue.substr(1);
+          switch (UnquotedValue[0]) {
+          case '0':
+            Storage.push_back(0x00);
+            break;
+          case 'a':
+            Storage.push_back(0x07);
+            break;
+          case 'b':
+            Storage.push_back(0x08);
+            break;
+          case 't':
+          case 0x09:
+            Storage.push_back(0x09);
+            break;
+          case 'n':
+            Storage.push_back(0x0A);
+            break;
+          case 'v':
+            Storage.push_back(0x0B);
+            break;
+          case 'f':
+            Storage.push_back(0x0C);
+            break;
+          case 'r':
+            Storage.push_back(0x0D);
+            break;
+          case 'e':
+            Storage.push_back(0x1B);
+            break;
+          case ' ':
+            Storage.push_back(0x20);
+            break;
+          case '"':
+            Storage.push_back(0x22);
+            break;
+          case '/':
+            Storage.push_back(0x2F);
+            break;
+          case '\\':
+            Storage.push_back(0x5C);
+            break;
+          case 'N': {
+              SmallString<4> Val = encodeUTF8(0x85);
+              Storage.insert(Storage.end(), Val.begin(), Val.end());
+              break;
+            }
+          case '_': {
+              SmallString<4> Val = encodeUTF8(0xA0);
+              Storage.insert(Storage.end(), Val.begin(), Val.end());
+              break;
+            }
+          case 'L': {
+              SmallString<4> Val = encodeUTF8(0x2028);
+              Storage.insert(Storage.end(), Val.begin(), Val.end());
+              break;
+            }
+          case 'P': {
+              SmallString<4> Val = encodeUTF8(0x2029);
+              Storage.insert(Storage.end(), Val.begin(), Val.end());
+              break;
+            }
+          case 'x': {
+              if (UnquotedValue.size() < 3)
+                // TODO: Report error.
+                break;
+              unsigned int UnicodeScalarValue;
+              UnquotedValue.substr(1, 2).getAsInteger(16, UnicodeScalarValue);
+              SmallString<4> Val = encodeUTF8(UnicodeScalarValue);
+              Storage.insert(Storage.end(), Val.begin(), Val.end());
+              UnquotedValue = UnquotedValue.substr(2);
+              break;
+            }
+          case 'u': {
+              if (UnquotedValue.size() < 5)
+                // TODO: Report error.
+                break;
+              unsigned int UnicodeScalarValue;
+              UnquotedValue.substr(1, 4).getAsInteger(16, UnicodeScalarValue);
+              SmallString<4> Val = encodeUTF8(UnicodeScalarValue);
+              Storage.insert(Storage.end(), Val.begin(), Val.end());
+              UnquotedValue = UnquotedValue.substr(4);
+              break;
+            }
+          case 'U': {
+              if (UnquotedValue.size() < 9)
+                // TODO: Report error.
+                break;
+              unsigned int UnicodeScalarValue;
+              UnquotedValue.substr(1, 8).getAsInteger(16, UnicodeScalarValue);
+              SmallString<4> Val = encodeUTF8(UnicodeScalarValue);
+              Storage.insert(Storage.end(), Val.begin(), Val.end());
+              UnquotedValue = UnquotedValue.substr(8);
+              break;
+            }
+          }
+          UnquotedValue = UnquotedValue.substr(1);
+        }
+      }
+      return StringRef(Storage.begin(), Storage.size());
+    }
+    return UnquotedValue;
+  } else if (Value[0] == '\'') { // Single quoted.
+    StringRef UnquotedValue = Value.substr(1, Value.size() - 2);
+    StringRef::size_type i = UnquotedValue.find('\'');
+    if (i != StringRef::npos) {
+      // We're going to need Storage.
+      Storage.clear();
+      Storage.reserve(UnquotedValue.size());
+      for (; i != StringRef::npos; i = UnquotedValue.find('\'')) {
+        StringRef Valid(UnquotedValue.begin(), i);
+        Storage.insert(Storage.end(), Valid.begin(), Valid.end());
+        Storage.push_back('\'');
+        UnquotedValue = UnquotedValue.substr(i + 2);
+      }
+      Storage.insert(Storage.end(), UnquotedValue.begin(), UnquotedValue.end());
+      return StringRef(Storage.begin(), Storage.size());
+    }
+    return UnquotedValue;
+  }
+  // Plain or block.
+  return Value;
 }
 
 Node *KeyValueNode::getKey() {
