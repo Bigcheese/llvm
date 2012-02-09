@@ -538,6 +538,37 @@ private:
 } // end namespace yaml
 } // end namespace llvm
 
+namespace {
+SmallString<4> encodeUTF8(uint32_t UnicodeScalarValue) {
+  SmallString<4> UTF8Subsequence;
+  if (UnicodeScalarValue <= 0x7F) {
+    UTF8Subsequence.push_back(UnicodeScalarValue & 0x7F);
+  } else if (UnicodeScalarValue <= 0x7FF) {
+    uint8_t FirstByte = 0xC0 | ((UnicodeScalarValue & 0x7C0) >> 6);
+    uint8_t SecondByte = 0x80 | (UnicodeScalarValue & 0x3F);
+    UTF8Subsequence.push_back(FirstByte);
+    UTF8Subsequence.push_back(SecondByte);
+  } else if (UnicodeScalarValue <= 0xFFFF) {
+    uint8_t FirstByte = 0xE0 | ((UnicodeScalarValue & 0xF000) >> 12);
+    uint8_t SecondByte = 0x80 | ((UnicodeScalarValue & 0xFC0) >> 6);
+    uint8_t ThirdByte = 0x80 | (UnicodeScalarValue & 0x3F);
+    UTF8Subsequence.push_back(FirstByte);
+    UTF8Subsequence.push_back(SecondByte);
+    UTF8Subsequence.push_back(ThirdByte);
+  } else if (UnicodeScalarValue <= 0x10FFFF) {
+    uint8_t FirstByte = 0xF0 | ((UnicodeScalarValue & 0x1F0000) >> 18);
+    uint8_t SecondByte = 0x80 | ((UnicodeScalarValue & 0x3F000) >> 12);
+    uint8_t ThirdByte = 0x80 | ((UnicodeScalarValue & 0xFC0) >> 6);
+    uint8_t FourthByte = 0x80 | (UnicodeScalarValue & 0x3F);
+    UTF8Subsequence.push_back(FirstByte);
+    UTF8Subsequence.push_back(SecondByte);
+    UTF8Subsequence.push_back(ThirdByte);
+    UTF8Subsequence.push_back(FourthByte);
+  }
+  return UTF8Subsequence;
+}
+}
+
 bool yaml::dumpTokens(StringRef Input, raw_ostream &OS) {
   SourceMgr SM;
   Scanner scanner(Input, SM);
@@ -664,7 +695,11 @@ std::string yaml::escape(StringRef Input) {
       UTF8Decoded UnicodeScalarValue
         = decodeUTF8(StringRef(i, Input.end() - i));
       if (UnicodeScalarValue.second == 0) {
-        EscapedInput
+        // Found invalid char.
+        SmallString<4> Val = encodeUTF8(0xFFFD);
+        EscapedInput.insert(EscapedInput.end(), Val.begin(), Val.end());
+        // FIXME: Error reporting.
+        return EscapedInput;
       }
       if (UnicodeScalarValue.first == 0x85)
         EscapedInput += "\\N";
@@ -1567,35 +1602,6 @@ void Node::setError(const Twine &Msg, Token &Tok) const {
 
 bool Node::failed() const {
   return Doc->failed();
-}
-
-SmallString<4> encodeUTF8(uint32_t UnicodeScalarValue) {
-  SmallString<4> UTF8Subsequence;
-  if (UnicodeScalarValue <= 0x7F) {
-    UTF8Subsequence.push_back(UnicodeScalarValue & 0x7F);
-  } else if (UnicodeScalarValue <= 0x7FF) {
-    uint8_t FirstByte = 0xC0 | ((UnicodeScalarValue & 0x7C0) >> 6);
-    uint8_t SecondByte = 0x80 | (UnicodeScalarValue & 0x3F);
-    UTF8Subsequence.push_back(FirstByte);
-    UTF8Subsequence.push_back(SecondByte);
-  } else if (UnicodeScalarValue <= 0xFFFF) {
-    uint8_t FirstByte = 0xE0 | ((UnicodeScalarValue & 0xF000) >> 12);
-    uint8_t SecondByte = 0x80 | ((UnicodeScalarValue & 0xFC0) >> 6);
-    uint8_t ThirdByte = 0x80 | (UnicodeScalarValue & 0x3F);
-    UTF8Subsequence.push_back(FirstByte);
-    UTF8Subsequence.push_back(SecondByte);
-    UTF8Subsequence.push_back(ThirdByte);
-  } else if (UnicodeScalarValue <= 0x10FFFF) {
-    uint8_t FirstByte = 0xF0 | ((UnicodeScalarValue & 0x1F0000) >> 18);
-    uint8_t SecondByte = 0x80 | ((UnicodeScalarValue & 0x3F000) >> 12);
-    uint8_t ThirdByte = 0x80 | ((UnicodeScalarValue & 0xFC0) >> 6);
-    uint8_t FourthByte = 0x80 | (UnicodeScalarValue & 0x3F);
-    UTF8Subsequence.push_back(FirstByte);
-    UTF8Subsequence.push_back(SecondByte);
-    UTF8Subsequence.push_back(ThirdByte);
-    UTF8Subsequence.push_back(FourthByte);
-  }
-  return UTF8Subsequence;
 }
 
 StringRef ScalarNode::getValue(SmallVectorImpl<char> &Storage) const {

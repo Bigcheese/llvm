@@ -7,9 +7,10 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "llvm/Support/YAMLParser.h"
+#include "llvm/ADT/SmallString.h"
 #include "llvm/ADT/Twine.h"
 #include "llvm/Support/SourceMgr.h"
+#include "llvm/Support/YAMLParser.h"
 #include "gtest/gtest.h"
 
 namespace llvm {
@@ -137,6 +138,7 @@ static void ExpectCanParseString(StringRef String) {
   StringRef ParsedString
     = dyn_cast<yaml::ScalarNode>(
       static_cast<yaml::Node*>(ParsedSequence->begin()))->getRawValue();
+  ParsedString = ParsedString.substr(1, ParsedString.size() - 2);
   EXPECT_EQ(String, ParsedString.str());
 }
 

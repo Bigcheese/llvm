@@ -1,7 +1,4 @@
 # RUN: yaml-bench -canonical %s |& FileCheck %s
-#
-# We don't currently reject invalid escapes.
-# XFAIL: *
 
 Bad escapes:
   "\c
