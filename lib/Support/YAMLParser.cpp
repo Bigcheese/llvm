@@ -663,6 +663,9 @@ std::string yaml::escape(StringRef Input) {
     } else if (*i & 0x80) { // utf8
       UTF8Decoded UnicodeScalarValue
         = decodeUTF8(StringRef(i, Input.end() - i));
+      if (UnicodeScalarValue.second == 0) {
+        EscapedInput
+      }
       if (UnicodeScalarValue.first == 0x85)
         EscapedInput += "\\N";
       else if (UnicodeScalarValue.first == 0xA0)
@@ -674,11 +677,11 @@ std::string yaml::escape(StringRef Input) {
       else {
         std::string HexStr = utohexstr(UnicodeScalarValue.first);
         if (HexStr.size() <= 2)
-          EscapedInput += "\\x" + std::string(HexStr.size() - 2, '0') + HexStr;
+          EscapedInput += "\\x" + std::string(2 - HexStr.size(), '0') + HexStr;
         else if (HexStr.size() <= 4)
-          EscapedInput += "\\u" + std::string(HexStr.size() - 4, '0') + HexStr;
+          EscapedInput += "\\u" + std::string(4 - HexStr.size(), '0') + HexStr;
         else if (HexStr.size() <= 8)
-          EscapedInput += "\\U" + std::string(HexStr.size() - 8, '0') + HexStr;
+          EscapedInput += "\\U" + std::string(8 - HexStr.size(), '0') + HexStr;
       }
       i += UnicodeScalarValue.second - 1;
     } else
@@ -1558,7 +1561,7 @@ BumpPtrAllocator &Node::getAllocator() {
   return Doc->NodeAllocator;
 }
 
-void Node::setError(const Twine &Msg, Token &Tok) {
+void Node::setError(const Twine &Msg, Token &Tok) const {
   Doc->setError(Msg, Tok);
 }
 
@@ -1600,13 +1603,12 @@ StringRef ScalarNode::getValue(SmallVectorImpl<char> &Storage) const {
   if (Value[0] == '"') { // Double quoted.
     // Search for characters that would require rebuilding the value.
     StringRef UnquotedValue = Value.substr(1, Value.size() - 2);
-    if (UnquotedValue.find_first_of("\\\r\n") != StringRef::npos) {
+    StringRef::size_type i = UnquotedValue.find_first_of("\\\r\n");
+    if (i != StringRef::npos) {
       // Use Storage to build proper value.
       Storage.clear();
       Storage.reserve(UnquotedValue.size());
-      while (!UnquotedValue.empty()) {
-        // Get next escaped char.
-        StringRef::size_type i = UnquotedValue.find_first_of("\\\r\n");
+      for (; i != StringRef::npos; i = UnquotedValue.find_first_of("\\\r\n")) {
         // Insert all previous chars into Storage.
         StringRef Valid(UnquotedValue.begin(), i);
         Storage.insert(Storage.end(), Valid.begin(), Valid.end());
@@ -1631,6 +1633,21 @@ StringRef ScalarNode::getValue(SmallVectorImpl<char> &Storage) const {
             break;
           UnquotedValue = UnquotedValue.substr(1);
           switch (UnquotedValue[0]) {
+          default: {
+              Token T;
+              T.Range = StringRef(UnquotedValue.begin(), 1);
+              setError("Unrecognized escape code!", T);
+              return "";
+            }
+          case '\r':
+          case '\n':
+            // Remove the new line.
+            if (   UnquotedValue.size() > 1
+                && (UnquotedValue[1] == '\r' || UnquotedValue[1] == '\n'))
+              UnquotedValue = UnquotedValue.substr(1);
+            // If this was just a single byte newline, it will get skipped
+            // below.
+            break;
           case '0':
             Storage.push_back(0x00);
             break;
@@ -1728,6 +1745,7 @@ StringRef ScalarNode::getValue(SmallVectorImpl<char> &Storage) const {
           UnquotedValue = UnquotedValue.substr(1);
         }
       }
+      Storage.insert(Storage.end(), UnquotedValue.begin(), UnquotedValue.end());
       return StringRef(Storage.begin(), Storage.size());
     }
     return UnquotedValue;
@@ -1986,7 +2004,7 @@ Token Document::getNext() {
   return stream.scanner->getNext();
 }
 
-void Document::setError(const Twine &Message, Token &Location) {
+void Document::setError(const Twine &Message, Token &Location) const {
   stream.scanner->setError(Message, Location.Range.begin());
 }
 

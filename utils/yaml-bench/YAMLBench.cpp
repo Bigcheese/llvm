@@ -74,7 +74,8 @@ void dumpNode( yaml::Node *n
     outs() << "&" << Anchor << " ";
   if (yaml::ScalarNode *sn = dyn_cast<yaml::ScalarNode>(n)) {
     SmallString<32> Storage;
-    outs() << "!!str \"" << yaml::escape(sn->getValue(Storage)) << "\"";
+    StringRef Val = sn->getValue(Storage);
+    outs() << "!!str \"" << yaml::escape(Val) << "\"";
   } else if (yaml::SequenceNode *sn = dyn_cast<yaml::SequenceNode>(n)) {
     outs() << "!!seq [\n";
     ++Indent;

@@ -120,7 +120,7 @@ public:
   Token getNext();
   Node *parseBlockNode();
   BumpPtrAllocator &getAllocator();
-  void setError(const Twine &Message, Token &Location);
+  void setError(const Twine &Message, Token &Location) const;
   bool failed() const;
 
   virtual void skip() {};
@@ -447,7 +447,7 @@ private:
 
   Token &peekNext();
   Token getNext();
-  void setError(const Twine &Message, Token &Location);
+  void setError(const Twine &Message, Token &Location) const;
   bool failed() const;
 
   void handleTagDirective(const Token &Tag) {
