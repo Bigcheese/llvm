@@ -38,7 +38,9 @@
 #ifndef LLVM_SUPPORT_YAML_PARSER_H
 #define LLVM_SUPPORT_YAML_PARSER_H
 
+#include "llvm/ADT/APInt.h"
 #include "llvm/ADT/OwningPtr.h"
+#include "llvm/ADT/SmallString.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Support/Allocator.h"
 #include "llvm/Support/Casting.h"
@@ -176,6 +178,33 @@ public:
 private:
   StringRef Value;
 };
+
+template <class T>
+bool getAs(const ScalarNode *SN, T &Result);
+
+template <>
+inline bool getAs<bool>(const ScalarNode *SN, bool &Result) {
+  SmallString<4> Storage;
+  StringRef Value = SN->getValue(Storage);
+  if (Value == "true")
+    Result = true;
+  else if (Value == "false")
+    Result = false;
+  else
+    return false;
+  return true;
+}
+
+template<>
+inline bool getAs<uint64_t>(const ScalarNode *SN, uint64_t &Result) {
+  SmallString<4> Storage;
+  StringRef Value = SN->getValue(Storage);
+  APInt Res;
+  bool Success = Value.getAsInteger(0, Res);
+  if (Success)
+    Result = Res.getZExtValue();
+  return Success;
+}
 
 /// @brief A key and value pair. While not technically a Node under the YAML
 ///        representation graph, it is easier to treat them this way.
