@@ -691,7 +691,7 @@ std::string yaml::escape(StringRef Input) {
     else if (*i >= 0 && *i < 0x20) { // Control characters not handled above.
       std::string HexStr = utohexstr(*i);
       EscapedInput += "\\x" + std::string(HexStr.size() - 2, '0') + HexStr;
-    } else if (*i & 0x80) { // utf8
+    } else if (*i & 0x80) { // UTF-8 multiple code unit subsequence.
       UTF8Decoded UnicodeScalarValue
         = decodeUTF8(StringRef(i, Input.end() - i));
       if (UnicodeScalarValue.second == 0) {
@@ -789,7 +789,7 @@ StringRef::iterator Scanner::skip_nb_char(StringRef::iterator Position) {
       || (*Position >= 0x20 && *Position <= 0x7E))
     return Position + 1;
 
-  // Check for valid utf-8.
+  // Check for valid UTF-8.
   if (uint8_t(*Position) & 0x80) {
     UTF8Decoded u8d = decodeUTF8(Position);
     if (   u8d.second != 0
@@ -836,19 +836,15 @@ StringRef::iterator Scanner::skip_ns_char(StringRef::iterator Position) {
 }
 
 static bool is_ns_hex_digit(const char C) {
-  if (  (C >= '0' && C <= '9')
-     || (C >= 'a' && C <= 'z')
-     || (C >= 'A' && C <= 'Z'))
-    return true;
-  return false;
+  return    (C >= '0' && C <= '9')
+         || (C >= 'a' && C <= 'z')
+         || (C >= 'A' && C <= 'Z');
 }
 
 static bool is_ns_word_char(const char C) {
-  if (  C == '-'
-     || (C >= 'a' && C <= 'z')
-     || (C >= 'A' && C <= 'Z'))
-    return true;
-  return false;
+  return    C == '-'
+         || (C >= 'a' && C <= 'z')
+         || (C >= 'A' && C <= 'Z');
 }
 
 StringRef Scanner::scan_ns_uri_char() {
