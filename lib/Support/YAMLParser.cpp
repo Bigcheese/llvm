@@ -197,75 +197,52 @@ struct SimpleKey {
 typedef std::pair<uint32_t, unsigned> UTF8Decoded;
 
 UTF8Decoded decodeUTF8(StringRef Range) {
-  StringRef::iterator Position = Range.begin();
+  StringRef::iterator Position= Range.begin();
   StringRef::iterator End = Range.end();
-  if ((uint8_t(*Position) & 0x80) == 0)
-    return std::make_pair(*Position, 1);
-
-  if (   (uint8_t(*Position) & 0xE0) == 0xC0
-      && Position + 1 != End
-      && uint8_t(*Position) >= 0xC2
-      && uint8_t(*Position) <= 0xDF
-      && uint8_t(*(Position + 1)) >= 0x80
-      && uint8_t(*(Position + 1)) <= 0xBF) {
-    uint32_t codepoint = uint8_t(*(Position + 1)) & 0x3F;
-    codepoint |= uint16_t(uint8_t(*Position) & 0x1F) << 6;
-    return std::make_pair(codepoint, 2);
+  // 1 byte: [0x00, 0x7f]
+  // Bit pattern: 0xxxxxxx
+  if ((*Position & 0x80) == 0) {
+     return std::make_pair(*Position, 1);
   }
-
-  if (   (uint8_t(*Position) & 0xF0) == 0xE0
-      && Position + 2 < End) {
-    if (   uint8_t(*Position) == 0xE0
-        && (  uint8_t(*(Position + 1)) < 0xA0
-          || uint8_t(*(Position + 1)) > 0xBF));
-    else if (  uint8_t(*Position) >= 0xE1
-            && uint8_t(*Position) <= 0xEC
-            && (  uint8_t(*(Position + 1)) < 0x80
-                || uint8_t(*(Position + 1)) > 0xBF));
-    else if (  uint8_t(*Position) == 0xED
-            && (  uint8_t(*(Position + 1)) < 0x80
-                || uint8_t(*(Position + 1)) > 0x9F));
-    else if (  uint8_t(*Position) >= 0xEE
-            && uint8_t(*Position) <= 0xEF
-            && (  uint8_t(*(Position + 1)) < 0x80
-                || uint8_t(*(Position + 1)) > 0xBF));
-    else {
-      if (   uint8_t(*(Position + 2)) >= 0x80
-          && uint8_t(*(Position + 2)) <= 0xBF) {
-        uint32_t codepoint = uint8_t(*(Position + 2)) & 0x3F;
-        codepoint |= uint16_t(uint8_t(*(Position + 1)) & 0x3F) << 6;
-        codepoint |= uint16_t(uint8_t(*Position) & 0x0F) << 12;
-        return std::make_pair(codepoint, 3);
-      }
-    }
+  // 2 bytes: [0x80, 0x7ff]
+  // Bit pattern: 110xxxxx 10xxxxxx
+  if (Position + 1 != End &&
+      ((*Position & 0xE0) == 0xC0) &&
+      ((*(Position + 1) & 0xC0) == 0x80)) {
+    uint32_t codepoint = ((*Position & 0x1F) << 6) |
+                          (*(Position + 1) & 0x3F);
+    if (codepoint >= 0x80)
+      return std::make_pair(codepoint, 2);
   }
-
-  if (   (uint8_t(*Position) & 0xF8) == 0xF0
-      && Position + 3 < End) {
-    if (  uint8_t(*Position) == 0xF0
-        && (  uint8_t(*(Position + 1)) < 0x90
-          || uint8_t(*(Position + 1)) > 0xBF));
-    else if (  uint8_t(*Position) >= 0xF1
-            && uint8_t(*Position) <= 0xF3
-            && (  uint8_t(*(Position + 1)) < 0x80
-                || uint8_t(*(Position + 1)) > 0xBF));
-    else if (  uint8_t(*Position) == 0xF4
-            && (  uint8_t(*(Position + 1)) < 0x80
-                || uint8_t(*(Position + 1)) > 0x8F));
-    else {
-      if (   uint8_t(*(Position + 2)) >= 0x80
-          && uint8_t(*(Position + 2)) <= 0xBF
-          && uint8_t(*(Position + 3)) >= 0x80
-          && uint8_t(*(Position + 3)) <= 0xBF) {
-        uint32_t codepoint = uint8_t(*(Position + 3)) & 0x3F;
-        codepoint |= uint32_t(uint8_t(*(Position + 2)) & 0x3F) << 6;
-        codepoint |= uint32_t(uint8_t(*(Position + 1)) & 0x3F) << 12;
-        codepoint |= uint32_t(uint8_t(*Position) & 0x07) << 18;
-        return std::make_pair(codepoint, 4);
-      }
-    }
+  // 3 bytes: [0x8000, 0xffff]
+  // Bit pattern: 1110xxxx 10xxxxxx 10xxxxxx
+  if (Position + 2 != End &&
+      ((*Position & 0xF0) == 0xE0) &&
+      ((*(Position + 1) & 0xC0) == 0x80) &&
+      ((*(Position + 2) & 0xC0) == 0x80)) {
+    uint32_t codepoint = ((*Position & 0x0F) << 12) |
+                         ((*(Position + 1) & 0x3F) << 6) |
+                          (*(Position + 2) & 0x3F);
+    // Codepoints between 0xD800 and 0xDFFF are invalid, as
+    // they are high / low surrogate halves used by UTF-16.
+    if (codepoint >= 0x800 &&
+        (codepoint < 0xD800 || codepoint > 0xDFFF))
+      return std::make_pair(codepoint, 3);
   }
-
+  // 4 bytes: [0x10000, 0x10FFFF]
+  // Bit pattern: 11110xxx 10xxxxxx 10xxxxxx 10xxxxxx
+  if (Position + 3 != End &&
+      ((*Position & 0xF8) == 0xF0) &&
+      ((*(Position + 1) & 0xC0) == 0x80) &&
+      ((*(Position + 2) & 0xC0) == 0x80) &&
+      ((*(Position + 3) & 0xC0) == 0x80)) {
+    uint32_t codepoint = ((*Position & 0x07) << 18) |
+                         ((*(Position + 1) & 0x3F) << 12) |
+                         ((*(Position + 2) & 0x3F) << 6) |
+                          (*(Position + 3) & 0x3F);
+    if (codepoint >= 0x10000 && codepoint <= 0x10FFFF)
+      return std::make_pair(codepoint, 4);
+  }
   return std::make_pair(0, 0);
 }
 
@@ -690,7 +667,7 @@ std::string yaml::escape(StringRef Input) {
       EscapedInput += "\\e";
     else if (*i >= 0 && *i < 0x20) { // Control characters not handled above.
       std::string HexStr = utohexstr(*i);
-      EscapedInput += "\\x" + std::string(HexStr.size() - 2, '0') + HexStr;
+      EscapedInput += "\\x" + std::string(2 - HexStr.size(), '0') + HexStr;
     } else if (*i & 0x80) { // UTF-8 multiple code unit subsequence.
       UTF8Decoded UnicodeScalarValue
         = decodeUTF8(StringRef(i, Input.end() - i));
