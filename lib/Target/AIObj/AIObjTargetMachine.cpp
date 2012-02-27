@@ -17,9 +17,20 @@
 #include "llvm/Support/TargetRegistry.h"
 using namespace llvm;
 
+namespace llvm {
+  MCStreamer *createAIObjAsmStreamer(MCContext &Ctx, formatted_raw_ostream &OS,
+                                     bool isVerboseAsm, bool useLoc,
+                                     bool useCFI, bool useDwarfDirectory,
+                                     MCInstPrinter *InstPrint,
+                                     MCCodeEmitter *CE,
+                                     MCAsmBackend *MAB,
+                                     bool ShowInst);
+}
+
 extern "C" void LLVMInitializeAIObjTarget() {
   // Register the target.
   RegisterTargetMachine<AIObjTargetMachine> X(TheAIObjTarget);
+  TargetRegistry::RegisterAsmStreamer(TheAIObjTarget, createAIObjAsmStreamer);
 }
 
 /// AIObjTargetMachine ctor - Create an ILP32 architecture model

@@ -15,6 +15,7 @@ add_llvm_target(AIObjCodeGen
   AIObjISelLowering.cpp
   AIObjFrameLowering.cpp
   AIObjMachineFunctionInfo.cpp
+  AIObjMCAsmStreamer.cpp
   AIObjRegAlloc.cpp
   AIObjRegisterInfo.cpp
   AIObjSubtarget.cpp
