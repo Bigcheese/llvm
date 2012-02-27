@@ -43,6 +43,7 @@ public:
   enum ArchType {
     UnknownArch,
 
+    aiobj,   // Lineage II ai.obj
     arm,     // ARM; arm, armv.*, xscale
     cellspu, // CellSPU: spu, cellspu
     hexagon, // Hexagon: hexagon

@@ -19,6 +19,7 @@ const char *Triple::getArchTypeName(ArchType Kind) {
   switch (Kind) {
   case UnknownArch: return "unknown";
 
+  case aiobj:   return "aiobj";
   case arm:     return "arm";
   case cellspu: return "cellspu";
   case hexagon: return "hexagon";
@@ -51,6 +52,8 @@ const char *Triple::getArchTypePrefix(ArchType Kind) {
   switch (Kind) {
   default:
     return 0;
+
+  case aiobj:   return "aiobj";
 
   case arm:
   case thumb:   return "arm";
@@ -656,6 +659,7 @@ static unsigned getArchPointerBitWidth(llvm::Triple::ArchType Arch) {
   case llvm::Triple::xcore:
     return 32;
 
+  case llvm::Triple::aiobj:
   case llvm::Triple::mips64:
   case llvm::Triple::mips64el:
   case llvm::Triple::ppc64:
@@ -683,6 +687,7 @@ Triple Triple::get32BitArchVariant() const {
   Triple T(*this);
   switch (getArch()) {
   case Triple::UnknownArch:
+  case Triple::aiobj:
   case Triple::msp430:
     T.setArch(UnknownArch);
     break;
@@ -734,6 +739,7 @@ Triple Triple::get64BitArchVariant() const {
     T.setArch(UnknownArch);
     break;
 
+  case Triple::aiobj:
   case Triple::mips64:
   case Triple::mips64el:
   case Triple::ppc64:
