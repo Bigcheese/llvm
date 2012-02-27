@@ -50,11 +50,18 @@ void AIObjInstPrinter::printInst(const MCInst *MI, raw_ostream &O,
   case AIObj::FUNCTION_CALL:
     printCall(MI, O);
   }
-  O << ";";
   printAnnotation(O, Annot);
 }
 
 void AIObjInstPrinter::printCall(const MCInst *MI, raw_ostream &O) {
   O << "\tfunc_call ";
   O << MI->getOperand(2).getImm();
+}
+
+void AIObjInstPrinter::printOperand( const MCInst *MI
+                                   , unsigned OpNo
+                                   , raw_ostream &O) {
+  const MCOperand &Op = MI->getOperand(OpNo);
+  assert(Op.isImm() && "AIObj only supports immidiate operands!");
+  O << Op.getImm();
 }

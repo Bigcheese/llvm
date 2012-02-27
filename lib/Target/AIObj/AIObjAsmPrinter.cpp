@@ -48,73 +48,69 @@
 using namespace llvm;
 
 bool AIObjAsmPrinter::doFinalization(Module &M) {
-  // XXX Temproarily remove global variables so that doFinalization() will not
-  // emit them again (global variables are emitted at beginning).
-
-  Module::GlobalListType &global_list = M.getGlobalList();
-  int i, n = global_list.size();
-  GlobalVariable **gv_array = new GlobalVariable* [n];
-
-  // first, back-up GlobalVariable in gv_array
-  i = 0;
-  for (Module::global_iterator I = global_list.begin(), E = global_list.end();
-       I != E; ++I)
-    gv_array[i++] = &*I;
-
-  // second, empty global_list
-  while (!global_list.empty())
-    global_list.remove(global_list.begin());
-
-  // call doFinalization
-  bool ret = AsmPrinter::doFinalization(M);
-
-  // now we restore global variables
-  for (i = 0; i < n; i ++)
-    global_list.insert(global_list.end(), gv_array[i]);
-
-  delete[] gv_array;
-  return ret;
+  return AsmPrinter::doFinalization(M);
 }
 
 void AIObjAsmPrinter::EmitStartOfAsmFile(Module &M)
 {
-  const AIObjSubtarget& ST = TM.getSubtarget<AIObjSubtarget>();
-
-  OutStreamer.AddBlankLine();
-
-  // Define any .file directives
-  DebugInfoFinder DbgFinder;
-  DbgFinder.processModule(M);
-
-  for (DebugInfoFinder::iterator I = DbgFinder.compile_unit_begin(),
-       E = DbgFinder.compile_unit_end(); I != E; ++I) {
-    DICompileUnit DIUnit(*I);
-    StringRef FN = DIUnit.getFilename();
-    StringRef Dir = DIUnit.getDirectory();
-    GetOrCreateSourceID(FN, Dir);
+  // Print metadata directives.
+  unsigned SizeofPointer = 8;
+  unsigned SharedFactoryVersion = 69;
+  unsigned NPCHVersion = 79;
+  unsigned NASCVersion = 2;
+  unsigned NPCEventHVersion = 2;
+  SmallVector<Module::ModuleFlagEntry, 5> Flags;
+  M.getModuleFlagsMetadata(Flags);
+  for (SmallVectorImpl<Module::ModuleFlagEntry>::const_iterator
+         i = Flags.begin(), e = Flags.end(); i != e; ++i) {
+    if (i->Key->getString() == "SizeofPointer") {
+      ConstantInt *CI = dyn_cast<ConstantInt>(i->Val);
+      assert(CI  && "Must be constant int");
+      SizeofPointer = CI->getSExtValue();
+    } if (i->Key->getString() == "SharedFactoryVersion") {
+      ConstantInt *CI = dyn_cast<ConstantInt>(i->Val);
+      assert(CI  && "Must be constant int");
+      SharedFactoryVersion = CI->getSExtValue();
+    } if (i->Key->getString() == "NPCHVersion") {
+      ConstantInt *CI = dyn_cast<ConstantInt>(i->Val);
+      assert(CI  && "Must be constant int");
+      NPCHVersion = CI->getSExtValue();
+    } if (i->Key->getString() == "NASCVersion") {
+      ConstantInt *CI = dyn_cast<ConstantInt>(i->Val);
+      assert(CI  && "Must be constant int");
+      NASCVersion = CI->getSExtValue();
+    } if (i->Key->getString() == "NPCEventHVersion") {
+      ConstantInt *CI = dyn_cast<ConstantInt>(i->Val);
+      assert(CI  && "Must be constant int");
+      NPCEventHVersion = CI->getSExtValue();
+    }
   }
 
+  OutStreamer.EmitRawText(Twine("SizeofPointer ") + Twine(SizeofPointer) + "\n"
+    + "SharedFactoryVersion " + Twine(SharedFactoryVersion) + "\n"
+    + "NPCHVersion " + Twine(NPCHVersion) + "\n"
+    + "NASCVersion " + Twine(NASCVersion) + "\n"
+    + "NPCEventHVersion " + Twine(NPCEventHVersion) + "\n"
+    + "Debug 0\n");
   OutStreamer.AddBlankLine();
-
-  // declare external functions
-  for (Module::const_iterator i = M.begin(), e = M.end();
-       i != e; ++i)
-    EmitFunctionDeclaration(i);
-
-  // declare global variables
-  for (Module::const_global_iterator i = M.global_begin(), e = M.global_end();
-       i != e; ++i)
-    EmitVariableDeclaration(i);
 }
 
 void AIObjAsmPrinter::EmitFunctionBodyStart() {
-  OutStreamer.EmitRawText(Twine("{"));
+  // Calculate the size of the function in opcodes...
+  unsigned Size = 0;
+  for (MachineFunction::const_iterator i = MF->begin(), e = MF->end(); i != e;
+                                       ++i) {
+    Size += i->size();
+  }
+
+
+  OutStreamer.EmitRawText(Twine("handler 3 ") + Twine(Size));
 
   const AIObjMachineFunctionInfo *MFI = MF->getInfo<AIObjMachineFunctionInfo>();
 }
 
 void AIObjAsmPrinter::EmitFunctionBodyEnd() {
-  OutStreamer.EmitRawText(Twine("}"));
+  OutStreamer.EmitRawText(Twine("handler_end"));
 }
 
 void AIObjAsmPrinter::EmitInstruction(const MachineInstr *MI) {
@@ -127,87 +123,6 @@ void AIObjAsmPrinter::EmitVariableDeclaration(const GlobalVariable *gv) {
   // Check to see if this is a special global used by LLVM, if so, emit it.
   if (EmitSpecialLLVMGlobal(gv))
     return;
-
-  MCSymbol *gvsym = Mang->getSymbol(gv);
-
-  assert(gvsym->isUndefined() && "Cannot define a symbol twice!");
-
-  SmallString<128> decl;
-  raw_svector_ostream os(decl);
-
-  // check if it is defined in some other translation unit
-  if (gv->isDeclaration())
-    os << ".extern ";
-
-  // state space: e.g., .global
-
-  // alignment (optional)
-  unsigned alignment = gv->getAlignment();
-  if (alignment != 0)
-    os << ".align " << gv->getAlignment() << ' ';
-
-
-  if (PointerType::classof(gv->getType())) {
-    PointerType* pointerTy = dyn_cast<PointerType>(gv->getType());
-    Type* elementTy = pointerTy->getElementType();
-
-    if (elementTy->isArrayTy()) {
-      assert(elementTy->isArrayTy() && "Only pointers to arrays are supported");
-
-      ArrayType* arrayTy = dyn_cast<ArrayType>(elementTy);
-      elementTy = arrayTy->getElementType();
-
-      unsigned numElements = arrayTy->getNumElements();
-
-      while (elementTy->isArrayTy()) {
-        arrayTy = dyn_cast<ArrayType>(elementTy);
-        elementTy = arrayTy->getElementType();
-
-        numElements *= arrayTy->getNumElements();
-      }
-
-      // FIXME: isPrimitiveType() == false for i16?
-      assert(elementTy->isSingleValueType() &&
-             "Non-primitive types are not handled");
-
-      // Find the size of the element in bits
-      unsigned elementSize = elementTy->getPrimitiveSizeInBits();
-
-      os << ".b" << elementSize << ' ' << gvsym->getName()
-         << '[' << numElements << ']';
-    } else {
-      os << ".b8" << gvsym->getName() << "[]";
-    }
-
-    // handle string constants (assume ConstantArray means string)
-    if (gv->hasInitializer()) {
-      const Constant *C = gv->getInitializer();
-      if (const ConstantArray *CA = dyn_cast<ConstantArray>(C)) {
-        os << " = {";
-
-        for (unsigned i = 0, e = C->getNumOperands(); i != e; ++i) {
-          if (i > 0)
-            os << ',';
-
-          os << "0x";
-          os.write_hex(cast<ConstantInt>(CA->getOperand(i))->getZExtValue());
-        }
-
-        os << '}';
-      }
-    }
-  } else {
-    // Note: this is currently the fall-through case and most likely generates
-    //       incorrect code.
-
-    if (isa<ArrayType>(gv->getType()) || isa<PointerType>(gv->getType()))
-      os << "[]";
-  }
-
-  os << ';';
-
-  OutStreamer.EmitRawText(os.str());
-  OutStreamer.AddBlankLine();
 }
 
 void AIObjAsmPrinter::EmitFunctionEntryLabel() {
@@ -252,9 +167,6 @@ unsigned AIObjAsmPrinter::GetOrCreateSourceID(StringRef FileName,
 
   unsigned SrcId = SourceIdMap.size();
   Entry.setValue(SrcId);
-
-  // Print out a .file directive to specify files for .loc directives.
-  OutStreamer.EmitDwarfFileDirective(SrcId, "", Entry.getKey());
 
   return SrcId;
 }

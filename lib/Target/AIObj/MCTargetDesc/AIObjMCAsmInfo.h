@@ -20,10 +20,10 @@
 namespace llvm {
   class Target;
 
-  class AIObjELFMCAsmInfo : public MCAsmInfo {
+  class AIObjMCAsmInfo : public MCAsmInfo {
     virtual void anchor();
   public:
-    explicit AIObjELFMCAsmInfo(const Target &T, StringRef TT);
+    explicit AIObjMCAsmInfo(const Target &T, StringRef TT);
   };
 
 } // namespace llvm

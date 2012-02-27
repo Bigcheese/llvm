@@ -16,28 +16,14 @@
 
 using namespace llvm;
 
-void AIObjELFMCAsmInfo::anchor() { }
+void AIObjMCAsmInfo::anchor() { }
 
-AIObjELFMCAsmInfo::AIObjELFMCAsmInfo(const Target &T, StringRef TT) {
-  IsLittleEndian = false;
-  Triple TheTriple(TT);
-  if (TheTriple.getArch() == Triple::sparcv9)
-    PointerSize = 8;
-
-  Data16bitsDirective = "\t.half\t";
-  Data32bitsDirective = "\t.word\t";
-  Data64bitsDirective = 0;  // .xword is only supported by V9.
-  ZeroDirective = "\t.skip\t";
-  CommentString = "!";
-  HasLEB128 = true;
-  SupportsDebugInformation = true;
-  
-  SunStyleELFSectionSwitchSyntax = true;
-  UsesELFSectionDirectiveForBSS = true;
-
-  WeakRefDirective = "\t.weak\t";
-
-  PrivateGlobalPrefix = ".L";
+AIObjMCAsmInfo::AIObjMCAsmInfo(const Target &T, StringRef TT) {
+  PointerSize = 8;
+  CommentString = "//";
+  LabelSuffix = "";
+  PrivateGlobalPrefix = "";
+  AllowPeriodsInName = false;
+  HasSetDirective = false;
+  HasSingleParameterDotFile = false;
 }
-
-

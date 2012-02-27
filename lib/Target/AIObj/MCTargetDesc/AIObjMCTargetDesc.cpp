@@ -69,7 +69,7 @@ static MCInstPrinter *createAIObjMCInstPrinter(const Target &T,
 
 extern "C" void LLVMInitializeAIObjTargetMC() {
   // Register the MC asm info.
-  RegisterMCAsmInfo<AIObjELFMCAsmInfo> X(TheAIObjTarget);
+  RegisterMCAsmInfo<AIObjMCAsmInfo> X(TheAIObjTarget);
 
   // Register the MC codegen info.
   TargetRegistry::RegisterMCCodeGenInfo(TheAIObjTarget,
