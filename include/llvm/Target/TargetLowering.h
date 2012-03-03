@@ -26,6 +26,7 @@
 #include "llvm/InlineAsm.h"
 #include "llvm/Attributes.h"
 #include "llvm/ADT/SmallPtrSet.h"
+#include "llvm/CodeGen/SchedulerRegistry.h"
 #include "llvm/CodeGen/SelectionDAGNodes.h"
 #include "llvm/CodeGen/RuntimeLibcalls.h"
 #include "llvm/Support/DebugLoc.h"
@@ -190,6 +191,10 @@ public:
   /// getSchedulingPreference - Return target scheduling preference.
   Sched::Preference getSchedulingPreference() const {
     return SchedPreferenceInfo;
+  }
+
+  RegisterScheduler::FunctionPassCtor getSchedulerCtor() const {
+    return SchedulerCtor;
   }
 
   /// getSchedulingPreference - Some scheduler, e.g. hybrid, can switch to
@@ -982,6 +987,10 @@ protected:
     SchedPreferenceInfo = Pref;
   }
 
+  void setSchedulerCtor(RegisterScheduler::FunctionPassCtor FPC) {
+    SchedulerCtor = FPC;
+  }
+
   /// setUseUnderscoreSetJmp - Indicate whether this target prefers to
   /// use _setjmp to implement llvm.setjmp or the non _ version.
   /// Defaults to false.
@@ -1706,6 +1715,8 @@ private:
   /// SchedPreferenceInfo - The target scheduling preference: shortest possible
   /// total cycles or lowest register usage.
   Sched::Preference SchedPreferenceInfo;
+
+  RegisterScheduler::FunctionPassCtor SchedulerCtor;
 
   /// JumpBufSize - The size, in bytes, of the target's jmp_buf buffers
   unsigned JumpBufSize;

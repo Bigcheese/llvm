@@ -632,6 +632,7 @@ TargetLowering::TargetLowering(const TargetMachine &tm,
   BooleanContents = UndefinedBooleanContent;
   BooleanVectorContents = UndefinedBooleanContent;
   SchedPreferenceInfo = Sched::ILP;
+  SchedulerCtor = 0;
   JumpBufSize = 0;
   JumpBufAlignment = 0;
   MinFunctionAlignment = 0;

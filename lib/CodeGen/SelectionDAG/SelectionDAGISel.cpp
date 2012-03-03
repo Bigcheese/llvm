@@ -217,6 +217,10 @@ namespace llvm {
                                              CodeGenOpt::Level OptLevel) {
     const TargetLowering &TLI = IS->getTargetLowering();
 
+    RegisterScheduler::FunctionPassCtor FPC = TLI.getSchedulerCtor();
+    if (FPC)
+      return FPC(IS, OptLevel);
+
     if (OptLevel == CodeGenOpt::None ||
         TLI.getSchedulingPreference() == Sched::Source)
       return createSourceListDAGScheduler(IS, OptLevel);
