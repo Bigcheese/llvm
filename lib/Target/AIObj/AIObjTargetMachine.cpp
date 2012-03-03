@@ -33,7 +33,7 @@ extern "C" void LLVMInitializeAIObjTarget() {
   TargetRegistry::RegisterAsmStreamer(TheAIObjTarget, createAIObjAsmStreamer);
 }
 
-/// AIObjTargetMachine ctor - Create an ILP32 architecture model
+/// AIObjTargetMachine ctor
 ///
 AIObjTargetMachine::AIObjTargetMachine( const Target &T
                                       , StringRef TT
@@ -75,6 +75,7 @@ public:
   void addOptimizedRegAlloc(FunctionPass *RegAllocPass);
   bool addPostRegAlloc();
   virtual bool addPreEmitPass();
+  virtual void addMachinePasses();
 };
 } // namespace
 
@@ -105,6 +106,14 @@ bool AIObjPassConfig::addPostRegAlloc() {
 /// addPreEmitPass - This pass may be implemented by targets that want to run
 /// passes immediately before machine code is emitted.  This should return
 /// true if -print-machineinstrs should print out the code after the passes.
-bool AIObjPassConfig::addPreEmitPass(){
+bool AIObjPassConfig::addPreEmitPass() {
   return false;
+}
+
+void AIObjPassConfig::addMachinePasses() {
+  // Print the instruction selected machine code...
+  printAndVerify("After Instruction Selection");
+
+  // Expand pseudo-instructions emitted by ISel.
+  addPass(ExpandISelPseudosID);
 }

@@ -84,14 +84,17 @@ AIObjTargetLowering::LowerFormalArguments
 }
 
 SDValue
-AIObjTargetLowering::LowerCall(SDValue Chain, SDValue Callee,
-                               CallingConv::ID CallConv, bool isVarArg,
-                               bool &isTailCall,
-                               const SmallVectorImpl<ISD::OutputArg> &Outs,
-                               const SmallVectorImpl<SDValue> &OutVals,
-                               const SmallVectorImpl<ISD::InputArg> &Ins,
-                               DebugLoc dl, SelectionDAG &DAG,
-                               SmallVectorImpl<SDValue> &InVals) const {
+AIObjTargetLowering::LowerCall( SDValue Chain
+                              , SDValue Callee
+                              , CallingConv::ID CallConv
+                              , bool isVarArg
+                              , bool doesNotRet
+                              , bool &isTailCall
+                              , const SmallVectorImpl<ISD::OutputArg> &Outs
+                              , const SmallVectorImpl<SDValue> &OutVals
+                              , const SmallVectorImpl<ISD::InputArg> &Ins
+                              , DebugLoc dl, SelectionDAG &DAG
+                              , SmallVectorImpl<SDValue> &InVals) const {
   MachineFunction &MF = DAG.getMachineFunction();
   const AIObjSubtarget &ST = getTargetMachine().getSubtarget<AIObjSubtarget>();
   AIObjMachineFunctionInfo *MFI = MF.getInfo<AIObjMachineFunctionInfo>();
