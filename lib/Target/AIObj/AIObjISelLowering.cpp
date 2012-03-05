@@ -13,6 +13,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "AIObjISelLowering.h"
+#include "AIObjSched.h"
 #include "AIObjTargetMachine.h"
 #include "AIObjMachineFunctionInfo.h"
 #include "llvm/DerivedTypes.h"
@@ -100,26 +101,27 @@ AIObjTargetLowering::LowerCall( SDValue Chain
   AIObjMachineFunctionInfo *MFI = MF.getInfo<AIObjMachineFunctionInfo>();
 
   std::vector<SDValue> Ops;
-  // The layout of the ops will be [Chain, #Ins, Ins, Callee, #Outs, Outs]
   Ops.push_back(Chain);
-  Ops.push_back(DAG.getTargetConstant(Ins.size(), MVT::i64));
+  Ops.push_back(Callee);
+  for (unsigned i = 0, e = Outs.size(); i != e; ++i)
+    Ops.push_back(OutVals[i]);
+
+  SmallVector<EVT, 4> ValueVTs;
 
   for (unsigned i = 0, e = Ins.size(); i != e; ++i) {
-    unsigned VReg =
-      MF.getRegInfo().createVirtualRegister(AIObj::RegI64RegisterClass);
-    SDValue ArgValue = DAG.getCopyFromReg(Chain, dl, VReg, Ins[i].VT);
-    InVals.push_back(ArgValue);
-    Ops.push_back(ArgValue);
+    ValueVTs.push_back(Ins[i].VT);
   }
+  ValueVTs.push_back(MVT::Other);
 
-  Ops.push_back(Callee);
-  Ops.push_back(DAG.getTargetConstant(Outs.size(), MVT::i64));
+  SDVTList VTs = DAG.getVTList(ValueVTs.data(), ValueVTs.size());
 
-  for (unsigned i = 0, e = Outs.size(); i != e; ++i) {
-    Ops.push_back(OutVals[i]);
+  if (Ins.size() == 1) {
+    SDValue &RetVal = DAG.getNode(AIOBJISD::FUNCTION_CALL, dl, VTs, &Ops[0], Ops.size());
+    InVals.push_back(RetVal);
+    return RetVal.getValue(ValueVTs.size() - 1);
+  } else {
+    return DAG.getNode(AIOBJISD::FUNCTION_CALL_VOID, dl, VTs, &Ops[0], Ops.size()); 
   }
-
-  return DAG.getNode(AIOBJISD::FUNCTION_CALL, dl, MVT::Other, &Ops[0], Ops.size());
 }
 
 unsigned
@@ -143,11 +145,14 @@ AIObjTargetLowering::AIObjTargetLowering(TargetMachine &TM)
   setMinFunctionAlignment(2);
 
   computeRegisterProperties();
+
+  setSchedulerCtor(createAIObjDAGScheduler);
 }
 
 const char *AIObjTargetLowering::getTargetNodeName(unsigned Opcode) const {
   switch (Opcode) {
   default: return 0;
+  case AIOBJISD::FUNCTION_CALL_VOID: return "AIOBJISD::FUNCTION_CALL_VOID";
   case AIOBJISD::FUNCTION_CALL: return "AIOBJISD::FUNCTION_CALL";
   case AIOBJISD::EXIT_HANDLER:  return "AIOBJISD::EXIT_HANDLER";
   }

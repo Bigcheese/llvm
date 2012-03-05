@@ -13,7 +13,7 @@
 
 let TargetPrefix = "aiobj" in {
   def int_aiobj_push_event : Intrinsic<[llvm_ptr_ty], [], [IntrNoMem]>;
-  def int_aiobj_test : Intrinsic<[], [llvm_i64_ty], []>;
+  def int_aiobj_test : Intrinsic<[llvm_i64_ty], [llvm_i64_ty], []>;
 
   // Arithmetic intrins llvm_i64_ty llvm_double_ty
   def int_aiobj_add_i64_i64 : Intrinsic<

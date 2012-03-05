@@ -18,6 +18,7 @@ add_llvm_target(AIObjCodeGen
   AIObjMCAsmStreamer.cpp
   AIObjRegAlloc.cpp
   AIObjRegisterInfo.cpp
+  AIObjSched.cpp
   AIObjSubtarget.cpp
   AIObjTargetMachine.cpp
   AIObjSelectionDAGInfo.cpp

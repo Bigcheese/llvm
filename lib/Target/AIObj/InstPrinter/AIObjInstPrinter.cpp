@@ -47,15 +47,18 @@ void AIObjInstPrinter::printInst(const MCInst *MI, raw_ostream &O,
   default:
     printInstruction(MI, O);
     break;
+  case AIObj::FUNCTION_CALL_VOID:
+    O << "\tfunc_call " << MI->getOperand(0).getImm();
+    break;
   case AIObj::FUNCTION_CALL:
-    printCall(MI, O);
+    O << "\tfunc_call " << MI->getOperand(1).getImm();
   }
   printAnnotation(O, Annot);
 }
 
 void AIObjInstPrinter::printCall(const MCInst *MI, raw_ostream &O) {
   O << "\tfunc_call ";
-  O << MI->getOperand(2).getImm();
+  O << MI->getOperand(1).getImm();
 }
 
 void AIObjInstPrinter::printOperand( const MCInst *MI

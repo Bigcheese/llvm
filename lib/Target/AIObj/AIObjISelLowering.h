@@ -22,6 +22,7 @@ namespace llvm {
   namespace AIOBJISD {
     enum {
       FIRST_NUMBER = ISD::BUILTIN_OP_END,
+      FUNCTION_CALL_VOID,
       FUNCTION_CALL,
       EXIT_HANDLER
     };
