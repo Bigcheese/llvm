@@ -116,4 +116,6 @@ void AIObjPassConfig::addMachinePasses() {
 
   // Expand pseudo-instructions emitted by ISel.
   addPass(ExpandISelPseudosID);
+
+  PM.add(createTargetRegisterAllocator(true));
 }

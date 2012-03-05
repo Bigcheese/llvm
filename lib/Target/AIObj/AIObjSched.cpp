@@ -21,15 +21,28 @@ using namespace llvm;
 
 class AIObjSched : public ScheduleDAGSDNodes {
 public:
-  AIObjSched(SelectionDAGISel *Is) : ScheduleDAGSDNodes(*Is->MF), IS(Is) {}
+  AIObjSched(SelectionDAGISel *Is)
+    : ScheduleDAGSDNodes(*Is->MF)
+    , IS(Is)
+    , CurrentStackSlot(0) {}
 
   // Schedule based on a depth first search.
   void ScheduleDFS(SDNode &SD) {
     if (isPassiveNode(&SD))
       return;
     // Emit load if this is already in a stack slot.
-    if (StackSlots.find(&SD) != StackSlots.end()) {
-      Sequence.push_back(NewSUnit(DAG->getMachineNode(AIObj::LOAD_FROM_STACK_SLOT, SD.getDebugLoc(), MVT::Other)));
+    DenseMap<SDNode*, unsigned>::iterator i = StackSlots.find(&SD);
+    if (i != StackSlots.end()) {
+      Sequence.push_back(
+        NewSUnit(
+          DAG->getMachineNode(
+              AIObj::LOAD_FROM_STACK_SLOT
+            , SD.getDebugLoc()
+            , MVT::Other
+            , DAG->getTargetConstant(i->second, MVT::i32)
+            )
+        )
+      );
       return;
     }
     for (unsigned i = 0, e = SD.getNumOperands(); i != e; ++i) {
@@ -46,8 +59,17 @@ public:
         ++UseCount;
     }
     if (UseCount > 1) {
-      Sequence.push_back(NewSUnit(DAG->getMachineNode(AIObj::STORE_TO_STACK_SLOT, SD.getDebugLoc(), MVT::Other)));
-      StackSlots[&SD] = 0;
+      Sequence.push_back(
+        NewSUnit(
+          DAG->getMachineNode(
+              AIObj::STORE_TO_STACK_SLOT
+            , SD.getDebugLoc()
+            , MVT::Other
+            , DAG->getTargetConstant(CurrentStackSlot, MVT::i32)
+            )
+        )
+      );
+      StackSlots[&SD] = CurrentStackSlot++;
     }
   }
 
@@ -65,6 +87,7 @@ public:
 private:
   SelectionDAGISel *IS;
   DenseMap<SDNode*, unsigned> StackSlots;
+  unsigned CurrentStackSlot;
 };
 
 ScheduleDAGSDNodes *llvm::createAIObjDAGScheduler( SelectionDAGISel *IS

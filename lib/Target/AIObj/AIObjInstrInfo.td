@@ -46,5 +46,6 @@ def PUSH_CONST : InstAIObj<(outs RegI64:$dst), (ins i64imm:$src), "push_const $s
 def ADD : InstAIObj<(outs RegI64:$dst), (ins RegI64:$src1, RegI64:$src2), "add", [(set RegI64:$dst, (add RegI64:$src1, RegI64:$src2))]>;
 
 def PUSH_REG_SP : InstAIObj<(outs), (ins), "push_reg_sp", []>;
-def STORE_TO_STACK_SLOT : InstAIObj<(outs), (ins), "STORE_TO_STACK_SLOT", []>;
-def LOAD_FROM_STACK_SLOT : InstAIObj<(outs), (ins), "LOAD_FROM_STACK_SLOT", []>;
+def STORE_TO_STACK_SLOT : InstAIObj<(outs), (ins i64imm:$src), "STORE_TO_STACK_SLOT", []>;
+def LOAD_FROM_STACK_SLOT : InstAIObj<(outs), (ins i64imm:$src), "LOAD_FROM_STACK_SLOT", []>;
+def SHIFT_SP : InstAIObj<(outs), (ins i64imm:$src), "shift_sp $src", []>;
