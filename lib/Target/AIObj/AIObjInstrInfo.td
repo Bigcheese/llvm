@@ -11,6 +11,8 @@
 //
 //===----------------------------------------------------------------------===//
 
+def brtarget : Operand<OtherVT>;
+
 //===----------------------------------------------------------------------===//
 // Instruction format superclass
 //===----------------------------------------------------------------------===//
@@ -33,6 +35,13 @@ def TEST : InstAIObj<(outs RegI64:$dst), (ins RegI64:$src), "TEST", [(set RegI64
 
 let isReturn = 1, isTerminator = 1 in {
   def EXIT_HANDLER : InstAIObj<(outs), (ins), "exit_handler", [(AIOBJexit_handler)]>;
+}
+
+let isBranch = 1, isTerminator = 1 in {
+  def JUMP : InstAIObj<(outs), (ins brtarget:$d), "jump $d", [(br bb:$d)]>;
+  def BRANCH_TRUE : InstAIObj<(outs), (ins RegI64:$src, brtarget:$d), "branch_true $d", [(brcond (setge RegI64:$src, 1), bb:$d)]>;
+  def BRANCH_FALSE : InstAIObj<(outs), (ins RegI64:$src, brtarget:$d), "branch_false $d", [(brcond (seteq RegI64:$src, 0), bb:$d)]>;
+  def BRANCH_FALSE0 : InstAIObj<(outs), (ins RegI64:$src, brtarget:$d), "branch_false $d", [(brcond (setlt RegI64:$src, 1), bb:$d)]>;
 }
 
 def FUNCTION_CALL_VOID : InstAIObj<(outs), (ins), "func_call", [(AIObjfunction_call_void)]>;
