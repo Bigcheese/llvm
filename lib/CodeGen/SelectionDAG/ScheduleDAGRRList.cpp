@@ -16,9 +16,9 @@
 //===----------------------------------------------------------------------===//
 
 #define DEBUG_TYPE "pre-RA-sched"
-#include "ScheduleDAGSDNodes.h"
 #include "llvm/InlineAsm.h"
 #include "llvm/CodeGen/SchedulerRegistry.h"
+#include "llvm/CodeGen/ScheduleDAGSDNodes.h"
 #include "llvm/CodeGen/SelectionDAGISel.h"
 #include "llvm/CodeGen/ScheduleHazardRecognizer.h"
 #include "llvm/Target/TargetRegisterInfo.h"

@@ -14,8 +14,8 @@
 
 #define DEBUG_TYPE "pre-RA-sched"
 #include "SDNodeDbgValue.h"
-#include "ScheduleDAGSDNodes.h"
 #include "InstrEmitter.h"
+#include "llvm/CodeGen/ScheduleDAGSDNodes.h"
 #include "llvm/CodeGen/SelectionDAG.h"
 #include "llvm/CodeGen/MachineInstrBuilder.h"
 #include "llvm/CodeGen/MachineRegisterInfo.h"
