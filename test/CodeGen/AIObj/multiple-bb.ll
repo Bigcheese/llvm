@@ -51,7 +51,7 @@ entry:
   %ggval0 = load %GlobalObject** %gg
   %i0 = getelementptr inbounds %NpcEvent* %event, i32 0, i32 46
   %i0val0 = load i64* %i0
-  %0 = icmp sgt i64 %i0val0, 0
+  %0 = icmp eq i64 %i0val0, 0
   br i1 %0, label %true, label %false
 true:
   call void @GlobalObject.Announce(%GlobalObject* %ggval0, i8* getelementptr inbounds ([6 x i8]* @S0., i64 0, i64 0))
