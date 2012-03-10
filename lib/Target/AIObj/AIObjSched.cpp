@@ -13,9 +13,13 @@
 
 #include "AIObjSched.h"
 #include "MCTargetDesc/AIObjMCTargetDesc.h"
+#include "llvm/ADT/PostOrderIterator.h"
 #include "llvm/CodeGen/ScheduleDAGSDNodes.h"
 #include "llvm/CodeGen/SelectionDAGISel.h"
 #include "llvm/Support/raw_ostream.h"
+
+#include <functional>
+#include <set>
 
 using namespace llvm;
 
@@ -103,10 +107,28 @@ public:
       ++NumSUnits;
     }
     SUnits.reserve(NumSUnits * 2);
-    errs() << "==========================\n";
-    for (std::vector<SDNode*>::iterator i = Roots.begin(), e = Roots.end();
+
+    std::vector<SDNode*> Result;
+    std::vector<SDNode*> Visited;
+
+    std::function<void(SDNode*)> POS = [&](SDNode *N) {
+      if (std::find(Visited.begin(), Visited.end(), N) != Visited.end())
+        return;
+      for (auto i = N->op_begin(), e = N->op_end(); i != e; ++i) {
+        if (i->getValueType() == MVT::Other)
+          POS(i->getNode());
+      }
+      // The current node is actually a root.
+      if (std::find(Roots.begin(), Roots.end(), N) != Roots.end()) {
+        Result.push_back(N);
+      }
+      Visited.push_back(N);
+    };
+
+    POS(DAG->getRoot().getNode());
+
+    for (std::vector<SDNode*>::iterator i = Result.begin(), e = Result.end();
                                         i != e; ++i) {
-      (*i)->dump(DAG);
       ScheduleDFS(**i);
     }
   }
