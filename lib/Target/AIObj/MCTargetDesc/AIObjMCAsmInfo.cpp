@@ -23,7 +23,8 @@ AIObjMCAsmInfo::AIObjMCAsmInfo(const Target &T, StringRef TT) {
   CommentString = "//";
   LabelSuffix = "";
   PrivateGlobalPrefix = "";
-  AllowPeriodsInName = false;
+  AllowPeriodsInName = true;
   HasSetDirective = false;
   HasSingleParameterDotFile = false;
+  HasDotTypeDotSizeDirective = false;
 }

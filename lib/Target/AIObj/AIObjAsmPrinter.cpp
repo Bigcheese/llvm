@@ -48,7 +48,15 @@
 using namespace llvm;
 
 bool AIObjAsmPrinter::doFinalization(Module &M) {
-  return AsmPrinter::doFinalization(M);
+  // Allow the target to emit any magic that it wants at the end of the file,
+  // after everything else has gone out.
+  EmitEndOfAsmFile(M);
+
+  delete Mang; Mang = 0;
+  MMI = 0;
+
+  OutStreamer.Finish();
+  return false;
 }
 
 void AIObjAsmPrinter::EmitStartOfAsmFile(Module &M)
@@ -103,10 +111,7 @@ void AIObjAsmPrinter::EmitFunctionBodyStart() {
     Size += i->size();
   }
 
-
   OutStreamer.EmitRawText(Twine("handler 3 ") + Twine(Size));
-
-  const AIObjMachineFunctionInfo *MFI = MF->getInfo<AIObjMachineFunctionInfo>();
 }
 
 void AIObjAsmPrinter::EmitFunctionBodyEnd() {
@@ -126,25 +131,11 @@ void AIObjAsmPrinter::EmitVariableDeclaration(const GlobalVariable *gv) {
 }
 
 void AIObjAsmPrinter::EmitFunctionEntryLabel() {
-  // The function label could have already been emitted if two symbols end up
-  // conflicting due to asm renaming.  Detect this and emit an error.
-  if (!CurrentFnSym->isUndefined())
-    report_fatal_error("'" + Twine(CurrentFnSym->getName()) +
-                       "' label emitted multiple times to assembly file");
-
-  const AIObjMachineFunctionInfo *MFI = MF->getInfo<AIObjMachineFunctionInfo>();
-  const AIObjSubtarget& ST = TM.getSubtarget<AIObjSubtarget>();
+  // AIObj doesn't have function entry labels.
 }
 
-void AIObjAsmPrinter::EmitFunctionDeclaration(const Function* func)
-{
-  const AIObjSubtarget& ST = TM.getSubtarget<AIObjSubtarget>();
-
-  std::string decl = "";
-
-  // hard-coded emission of extern vprintf function
-
-  OutStreamer.EmitRawText(Twine(decl));
+void AIObjAsmPrinter::EmitFunctionDeclaration(const Function* func) {
+  // AIObj doesn't have function declarations.
 }
 
 unsigned AIObjAsmPrinter::GetOrCreateSourceID(StringRef FileName,
@@ -172,7 +163,7 @@ unsigned AIObjAsmPrinter::GetOrCreateSourceID(StringRef FileName,
 }
 
 MCOperand AIObjAsmPrinter::GetSymbolRef(const MachineOperand &MO,
-                                      const MCSymbol *Symbol) {
+                                        const MCSymbol *Symbol) {
   const MCExpr *Expr;
   Expr = MCSymbolRefExpr::Create(Symbol, MCSymbolRefExpr::VK_None, OutContext);
   return MCOperand::CreateExpr(Expr);

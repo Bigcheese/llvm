@@ -258,8 +258,7 @@ void AIObjMCAsmStreamer::EmitAssignment(MCSymbol *Symbol, const MCExpr *Value) {
 
 void AIObjMCAsmStreamer::EmitWeakReference(MCSymbol *Alias,
                                          const MCSymbol *Symbol) {
-  OS << ".weakref " << *Alias << ", " << *Symbol;
-  EmitEOL();
+  report_fatal_error("Unimplemented.");
 }
 
 void AIObjMCAsmStreamer::EmitDwarfAdvanceLineAddr(int64_t LineDelta,
@@ -389,21 +388,15 @@ void AIObjMCAsmStreamer::EmitValueImpl(const MCExpr *Value, unsigned Size,
 }
 
 void AIObjMCAsmStreamer::EmitULEB128Value(const MCExpr *Value) {
-  assert(MAI.hasLEB128() && "Cannot print a .uleb");
-  OS << ".uleb128 " << *Value;
-  EmitEOL();
+  report_fatal_error("Unimplemented.");
 }
 
 void AIObjMCAsmStreamer::EmitSLEB128Value(const MCExpr *Value) {
-  assert(MAI.hasLEB128() && "Cannot print a .sleb");
-  OS << ".sleb128 " << *Value;
-  EmitEOL();
+  report_fatal_error("Unimplemented.");
 }
 
 void AIObjMCAsmStreamer::EmitGPRel32Value(const MCExpr *Value) {
-  assert(MAI.getGPRel32Directive() != 0);
-  OS << MAI.getGPRel32Directive() << *Value;
-  EmitEOL();
+  report_fatal_error("Unimplemented.");
 }
 
 
