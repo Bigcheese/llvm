@@ -47,7 +47,7 @@ public:
     }
     for (unsigned i = 0, e = SD.getNumOperands(); i != e; ++i) {
       const SDValue &SDV = SD.getOperand(i);
-      if (e > 1 && SDV.getValueType() == MVT::Other)
+      if (SDV.getValueType() == MVT::Other)
         continue;
       ScheduleDFS(*SDV.getNode());
     }
@@ -55,7 +55,7 @@ public:
     // Create a store to temp if this has more than one use.
     unsigned UseCount = 0;
     for (auto i = SD.use_begin(), e = SD.use_end(); i != e; ++i) {
-      if (i->getValueType(0) != MVT::Other)
+      if (i.getUse().getValueType() != MVT::Other)
         ++UseCount;
     }
     if (UseCount > 1) {
@@ -66,6 +66,7 @@ public:
             , SD.getDebugLoc()
             , MVT::Other
             , DAG->getTargetConstant(CurrentStackSlot, MVT::i32)
+            , DAG->getTargetConstant(UseCount, MVT::i32)
             )
         )
       );
@@ -73,15 +74,41 @@ public:
     }
   }
 
+  // All nodes which have no non-chain uses are added to a root node list. This
+  // list is then sorted by topological order.
+  //
+  // For each root node, each non-chain operand is visited.
+  //
+  // If the operand node has more than one non-chain use it is looked up to see
+  // if it has already been evaluated. If so, it is loaded from the previous
+  // stack slot. If not, each non-chain operand is recursively visited in depth
+  // first order.
+  //
+  // After visiting operands, the current node is appended to the schedule. If
+  // it has more than one non-chain use, it is stored to a stack slot.
   void Schedule() {
+    std::vector<SDNode*> Roots;
     unsigned NumSUnits = 0;
     for (SelectionDAG::allnodes_iterator NI = DAG->allnodes_begin(),
            E = DAG->allnodes_end(); NI != E; ++NI) {
+      unsigned NonChainUses = 0;
+      for (SDNode::use_iterator i = NI->use_begin(), e = NI->use_end();
+                                i != e; ++i) {
+        if (i.getUse().getValueType() != MVT::Other)
+          ++NonChainUses;
+      }
+      if (NonChainUses == 0)
+        Roots.push_back(NI);
       NI->setNodeId(-1);
       ++NumSUnits;
     }
     SUnits.reserve(NumSUnits * 2);
-    ScheduleDFS(*DAG->getRoot().getNode());
+    errs() << "==========================\n";
+    for (std::vector<SDNode*>::iterator i = Roots.begin(), e = Roots.end();
+                                        i != e; ++i) {
+      (*i)->dump(DAG);
+      ScheduleDFS(**i);
+    }
   }
 
 private:

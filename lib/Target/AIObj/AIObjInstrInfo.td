@@ -39,7 +39,7 @@ let isReturn = 1, isTerminator = 1 in {
 
 let isBranch = 1, isTerminator = 1 in {
   def JUMP : InstAIObj<(outs), (ins brtarget:$d), "jump $d", [(br bb:$d)]>;
-  def BRANCH_TRUE : InstAIObj<(outs), (ins brtarget:$dst), "branch_true $dst", []>;
+  def BRANCH_TRUE : InstAIObj<(outs), (ins brtarget:$dst, RegI64:$cond), "branch_true $dst", []>;
   def BRANCH_FALSE : InstAIObj<(outs), (ins brtarget:$dst), "branch_false $dst", []>;
 }
 
@@ -56,6 +56,6 @@ def PUSH_CONST : InstAIObj<(outs RegI64:$dst), (ins i64imm:$src), "push_const $s
 def ADD : InstAIObj<(outs RegI64:$dst), (ins RegI64:$src1, RegI64:$src2), "add", [(set RegI64:$dst, (add RegI64:$src1, RegI64:$src2))]>;
 
 def PUSH_REG_SP : InstAIObj<(outs), (ins), "push_reg_sp", []>;
-def STORE_TO_STACK_SLOT : InstAIObj<(outs), (ins i64imm:$src), "STORE_TO_STACK_SLOT", []>;
-def LOAD_FROM_STACK_SLOT : InstAIObj<(outs), (ins i64imm:$src), "LOAD_FROM_STACK_SLOT", []>;
+def STORE_TO_STACK_SLOT : InstAIObj<(outs), (ins i32imm:$src, i32imm:$uses), "STORE_TO_STACK_SLOT", []>;
+def LOAD_FROM_STACK_SLOT : InstAIObj<(outs), (ins i32imm:$src), "LOAD_FROM_STACK_SLOT", []>;
 def SHIFT_SP : InstAIObj<(outs), (ins i64imm:$src), "shift_sp $src", []>;

@@ -53,8 +53,9 @@ namespace {
         for (MachineBasicBlock::iterator MII = MBBI->instr_begin(), MIE = MBBI->instr_end();
                                                 MII != MIE; ++MII) {
           if (MII->getOpcode() == AIObj::STORE_TO_STACK_SLOT) {
-            uint64_t StackSlot = MII->getOperand(0).getImm();
-            if (canFoldToDup(MII + 1, StackSlot)) {
+            int64_t StackSlot = MII->getOperand(0).getImm();
+            int64_t Uses = MII->getOperand(1).getImm();
+            if (canFoldToDup(MII + 1, StackSlot) && Uses == 1) {
               MII = MBBI->erase_instr(MII);
               MII = MBBI->erase_instr(MII); // Erase LOAD_FROM_STACK_SLOT
               MII = BuildMI(*MBBI, MII, MII->getDebugLoc(), TII.get(AIObj::PUSH_REG_SP));
