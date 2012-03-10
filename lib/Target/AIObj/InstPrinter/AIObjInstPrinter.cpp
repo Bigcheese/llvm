@@ -26,9 +26,10 @@ using namespace llvm;
 #define GET_INSTRUCTION_NAME
 #include "AIObjGenAsmWriter.inc"
 
-AIObjInstPrinter::AIObjInstPrinter(const MCAsmInfo &MAI,
-                               const MCSubtargetInfo &STI) :
-  MCInstPrinter(MAI) {
+AIObjInstPrinter::AIObjInstPrinter( const MCAsmInfo &MAI
+                                  , const MCRegisterInfo &MRI
+                                  , const MCSubtargetInfo &STI)
+  : MCInstPrinter(MAI, MRI) {
   // Initialize the set of available features.
   setAvailableFeatures(STI.getFeatureBits());
 }
@@ -65,6 +66,11 @@ void AIObjInstPrinter::printOperand( const MCInst *MI
                                    , unsigned OpNo
                                    , raw_ostream &O) {
   const MCOperand &Op = MI->getOperand(OpNo);
-  assert(Op.isImm() && "AIObj only supports immidiate operands!");
-  O << Op.getImm();
+  if (Op.isExpr()) {
+    const MCExpr *MCE = Op.getExpr();
+    O << cast<const MCSymbolRefExpr>(MCE)->getSymbol().getName();
+  } else if (Op.isImm())
+    O << Op.getImm();
+  else
+    llvm_unreachable("Unsupported MC operand type.");
 }

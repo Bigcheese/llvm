@@ -34,7 +34,7 @@ public:
     DenseMap<SDNode*, unsigned>::iterator i = StackSlots.find(&SD);
     if (i != StackSlots.end()) {
       Sequence.push_back(
-        NewSUnit(
+        newSUnit(
           DAG->getMachineNode(
               AIObj::LOAD_FROM_STACK_SLOT
             , SD.getDebugLoc()
@@ -51,7 +51,7 @@ public:
         continue;
       ScheduleDFS(*SDV.getNode());
     }
-    Sequence.push_back(NewSUnit(&SD));
+    Sequence.push_back(newSUnit(&SD));
     // Create a store to temp if this has more than one use.
     unsigned UseCount = 0;
     for (auto i = SD.use_begin(), e = SD.use_end(); i != e; ++i) {
@@ -60,7 +60,7 @@ public:
     }
     if (UseCount > 1) {
       Sequence.push_back(
-        NewSUnit(
+        newSUnit(
           DAG->getMachineNode(
               AIObj::STORE_TO_STACK_SLOT
             , SD.getDebugLoc()

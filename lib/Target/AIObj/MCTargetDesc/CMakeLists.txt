@@ -1,6 +1,6 @@
 add_llvm_library(LLVMAIObjDesc
-  AIObjMCTargetDesc.cpp
   AIObjMCAsmInfo.cpp
+  AIObjMCTargetDesc.cpp
   )
 
 add_dependencies(LLVMAIObjDesc AIObjCommonTableGen)

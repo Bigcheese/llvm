@@ -141,6 +141,7 @@ AIObjTargetLowering::AIObjTargetLowering(TargetMachine &TM)
   addRegisterClass(MVT::i64, &AIObj::RegI64RegClass);
 
   setOperationAction(ISD::GlobalAddress, MVT::i64, Custom);
+  setOperationAction(ISD::BR_CC, MVT::Other, Expand);
 
   setMinFunctionAlignment(2);
 

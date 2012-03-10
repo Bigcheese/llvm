@@ -62,9 +62,10 @@ static MCCodeGenInfo *createAIObjMCCodeGenInfo(StringRef TT, Reloc::Model RM,
 static MCInstPrinter *createAIObjMCInstPrinter(const Target &T,
                                              unsigned SyntaxVariant,
                                              const MCAsmInfo &MAI,
+                                             const MCRegisterInfo &MRI,
                                              const MCSubtargetInfo &STI) {
   assert(SyntaxVariant == 0 && "We only have one syntax variant");
-  return new AIObjInstPrinter(MAI, STI);
+  return new AIObjInstPrinter(MAI, MRI, STI);
 }
 
 extern "C" void LLVMInitializeAIObjTargetMC() {

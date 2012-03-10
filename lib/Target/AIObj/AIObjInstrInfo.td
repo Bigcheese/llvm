@@ -39,10 +39,11 @@ let isReturn = 1, isTerminator = 1 in {
 
 let isBranch = 1, isTerminator = 1 in {
   def JUMP : InstAIObj<(outs), (ins brtarget:$d), "jump $d", [(br bb:$d)]>;
-  def BRANCH_TRUE : InstAIObj<(outs), (ins RegI64:$src, brtarget:$d), "branch_true $d", [(brcond (setge RegI64:$src, 1), bb:$d)]>;
-  def BRANCH_FALSE : InstAIObj<(outs), (ins RegI64:$src, brtarget:$d), "branch_false $d", [(brcond (seteq RegI64:$src, 0), bb:$d)]>;
-  def BRANCH_FALSE0 : InstAIObj<(outs), (ins RegI64:$src, brtarget:$d), "branch_false $d", [(brcond (setlt RegI64:$src, 1), bb:$d)]>;
+  def BRANCH_TRUE : InstAIObj<(outs), (ins brtarget:$dst), "branch_true $dst", []>;
+  def BRANCH_FALSE : InstAIObj<(outs), (ins brtarget:$dst), "branch_false $dst", []>;
 }
+
+def NOT_EQUAL : InstAIObj<(outs RegI64:$dst), (ins RegI64:$src1, RegI64:$src2), "not_equal", [(set RegI64:$dst, (setcc RegI64:$src1, RegI64:$src2, SETNE))]>;
 
 def FUNCTION_CALL_VOID : InstAIObj<(outs), (ins), "func_call", [(AIObjfunction_call_void)]>;
 def FUNCTION_CALL : InstAIObj<(outs RegI64:$dst), (ins), "func_call", [(set RegI64:$dst, (AIObjfunction_call))]>;
