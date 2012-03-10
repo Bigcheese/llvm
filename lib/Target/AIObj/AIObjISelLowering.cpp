@@ -161,7 +161,10 @@ const char *AIObjTargetLowering::getTargetNodeName(unsigned Opcode) const {
 
 SDValue AIObjTargetLowering::LowerGlobalAddress(SDValue Op,
                                                 SelectionDAG &DAG) const {
-  return DAG.getTargetConstant(0xdeadbeef, MVT::i64);
+  GlobalAddressSDNode *GASDN = dyn_cast<GlobalAddressSDNode>(Op.getNode());
+  const GlobalValue *GV = GASDN->getGlobal();
+  return DAG.getTargetGlobalAddress(GV, Op.getDebugLoc(), getPointerTy(),
+                                    GASDN->getOffset());
 }
 
 SDValue AIObjTargetLowering::LowerConstantPool(SDValue Op,

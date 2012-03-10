@@ -14,6 +14,7 @@
 #include "AIObj.h"
 #include "AIObjTargetMachine.h"
 #include "llvm/Intrinsics.h"
+#include "llvm/Function.h"
 #include "llvm/CodeGen/SelectionDAGISel.h"
 #include "llvm/Support/Compiler.h"
 #include "llvm/Support/Debug.h"
@@ -53,6 +54,7 @@ public:
 
 private:
   SDNode *SelectBRCOND(SDNode *N);
+  SDNode *SelectTargetGlobalAddress(SDNode *N);
 };
 }  // end anonymous namespace
 
@@ -65,6 +67,8 @@ SDNode *AIObjDAGToDAGISel::Select(SDNode *N) {
   switch (N->getOpcode()) {
   case ISD::BRCOND:
     return SelectBRCOND(N);
+  case ISD::TargetGlobalAddress:
+    return SelectTargetGlobalAddress(N);
   default:
     return SelectCode(N);
   }
@@ -84,6 +88,23 @@ SDNode *AIObjDAGToDAGISel::SelectBRCOND(SDNode *N) {
   // Emit BRAdp
   SDValue Ops[] = { Target, Pred, Chain };
   return CurDAG->getMachineNode(AIObj::BRANCH_TRUE, dl, MVT::Other, Ops, 3);
+}
+
+SDNode *AIObjDAGToDAGISel::SelectTargetGlobalAddress(SDNode *N) {
+  GlobalAddressSDNode *GASDN = dyn_cast<GlobalAddressSDNode>(N);
+  const GlobalValue *GV = GASDN->getGlobal();
+  if (dyn_cast<Function>(GV))
+    return 0;
+  return CurDAG->getMachineNode( AIObj::PUSH_STRING
+                               , GASDN->getDebugLoc()
+                               , MVT::i64
+                               , CurDAG->getTargetGlobalAddress(
+                                   GV
+                                 , GASDN->getDebugLoc()
+                                 , GASDN->getValueType(0)
+                                 , GASDN->getOffset() + 1
+                                 )
+                               );
 }
 
 /// createAIObjISelDag - This pass converts a legalized DAG into a

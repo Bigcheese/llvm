@@ -52,6 +52,7 @@ def FETCH_I : InstAIObj<(outs RegI64:$dst), (ins RegI64:$src), "fetch_i", [(set 
 def ASSIGN : InstAIObj<(outs), (ins RegI64:$val, RegI64:$addr), "assign", [(store RegI64:$val, RegI64:$addr)]>;
 
 def PUSH_CONST : InstAIObj<(outs RegI64:$dst), (ins i64imm:$src), "push_const $src", [(set RegI64:$dst, imm:$src)]>;
+def PUSH_STRING : InstAIObj<(outs RegI64:$dst), (ins RegI64:$src), "push_string $src", []>;
 
 def ADD : InstAIObj<(outs RegI64:$dst), (ins RegI64:$src1, RegI64:$src2), "add", [(set RegI64:$dst, (add RegI64:$src1, RegI64:$src2))]>;
 
