@@ -26,6 +26,7 @@
 #include "llvm/ADT/SmallString.h"
 #include "llvm/ADT/Twine.h"
 #include "llvm/Analysis/DebugInfo.h"
+#include "llvm/Analysis/ValueTracking.h"
 #include "llvm/CodeGen/AsmPrinter.h"
 #include "llvm/CodeGen/MachineFrameInfo.h"
 #include "llvm/CodeGen/MachineInstr.h"
@@ -119,6 +120,14 @@ void AIObjAsmPrinter::EmitFunctionBodyEnd() {
 }
 
 void AIObjAsmPrinter::EmitInstruction(const MachineInstr *MI) {
+  // This hack has to be done here because MCInst's don't have access to the
+  // GV.
+  if (MI->getOpcode() == AIObj::PUSH_STRING) {
+    StringRef Value;
+    getConstantStringInfo(MI->getOperand(1).getGlobal(), Value);
+    OutStreamer.EmitRawText(Twine(Mang->getSymbol(MI->getOperand(1).getGlobal())->getName())
+                            + Twine(" \"") + Value + Twine('"'));
+  }
   MCInst TmpInst;
   LowerAIObjMachineInstrToMCInst(MI, TmpInst, *this);
   OutStreamer.EmitInstruction(TmpInst);
