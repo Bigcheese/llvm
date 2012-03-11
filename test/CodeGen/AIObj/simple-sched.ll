@@ -60,7 +60,6 @@ entry:
   call void @GlobalObject.Announce(%GlobalObject* %ggval0, i8* %str)
 ; CHECK: func_call
   ret void
-; CHECK: exit_handler
 }
 
 !0 = metadata !{ i32 1, metadata !"SizeofPointer", i32 8 }

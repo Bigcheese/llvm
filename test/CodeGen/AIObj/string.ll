@@ -46,9 +46,16 @@ declare void @GlobalObject.Announce(%GlobalObject*, i8*) nounwind
 define void @TALKED() {
 entry:
   %event = call %NpcEvent* @llvm.aiobj.push.event()
+; CHECK: push_event
   %gg = getelementptr inbounds %NpcEvent* %event, i32 0, i32 48
+; CHECK: push_const 296
+; CHECK: add
   %ggval0 = load %GlobalObject** %gg
+; CHECK: fetch_i
   call void @GlobalObject.Announce(%GlobalObject* %ggval0, i8* getelementptr inbounds ([6 x i8]* @S0, i64 0, i64 0))
+; CHECK: "Hello!"
+; CHECK: push_string
+; CHECK: func_call
   ret void
 }
 
