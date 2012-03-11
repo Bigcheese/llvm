@@ -41,8 +41,8 @@ declare i64 @llvm.aiobj.add.i64.i64(i64, i64) nounwind readnone
 declare i8* @GlobalObject.IntToStr(%GlobalObject*, i64) nounwind readnone
 declare void @GlobalObject.Announce(%GlobalObject*, i8*) nounwind
 
-@S0. = private unnamed_addr constant [6 x i8] c"Hello!", align 1
-@S1. = private unnamed_addr constant [4 x i8] c"Bye!", align 1
+@S0 = private unnamed_addr constant [6 x i8] c"Hello!", align 1
+@S1 = private unnamed_addr constant [4 x i8] c"Bye!", align 1
 
 define void @TALKED() {
 entry:
@@ -54,10 +54,10 @@ entry:
   %0 = icmp eq i64 %i0val0, 0
   br i1 %0, label %true, label %false
 true:
-  call void @GlobalObject.Announce(%GlobalObject* %ggval0, i8* getelementptr inbounds ([6 x i8]* @S0., i64 0, i64 0))
+  call void @GlobalObject.Announce(%GlobalObject* %ggval0, i8* getelementptr inbounds ([6 x i8]* @S0, i64 0, i64 0))
   br label %end
 false:
-  call void @GlobalObject.Announce(%GlobalObject* %ggval0, i8* getelementptr inbounds ([4 x i8]* @S1., i64 0, i64 0))
+  call void @GlobalObject.Announce(%GlobalObject* %ggval0, i8* getelementptr inbounds ([4 x i8]* @S1, i64 0, i64 0))
   br label %end
 end:
   ret void
