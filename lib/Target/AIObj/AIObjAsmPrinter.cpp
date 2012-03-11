@@ -126,7 +126,7 @@ void AIObjAsmPrinter::EmitInstruction(const MachineInstr *MI) {
     StringRef Value;
     getConstantStringInfo(MI->getOperand(1).getGlobal(), Value);
     OutStreamer.EmitRawText(Twine(Mang->getSymbol(MI->getOperand(1).getGlobal())->getName())
-                            + Twine(" \"") + Value + Twine('"'));
+                            + Twine(". \"") + Value + Twine('"'));
   }
   MCInst TmpInst;
   LowerAIObjMachineInstrToMCInst(MI, TmpInst, *this);
