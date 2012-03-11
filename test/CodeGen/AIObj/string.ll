@@ -38,17 +38,17 @@
 declare %NpcEvent* @llvm.aiobj.push.event() nounwind readnone
 declare i64 @llvm.aiobj.test(i64) nounwind
 declare i64 @llvm.aiobj.add.i64.i64(i64, i64) nounwind readnone
-declare i8* @"\01GlobalObject.IntToStr"(%GlobalObject*, i64) nounwind readnone
-declare void @"\01GlobalObject.Announce"(%GlobalObject*, i8*) nounwind
+declare i8* @GlobalObject.IntToStr(%GlobalObject*, i64) nounwind readnone
+declare void @GlobalObject.Announce(%GlobalObject*, i8*) nounwind
 
-@"\01S0." = private unnamed_addr constant [6 x i8] c"Hello!", align 1
+@S0 = private unnamed_addr constant [6 x i8] c"Hello!", align 1
 
 define void @TALKED() {
 entry:
   %event = call %NpcEvent* @llvm.aiobj.push.event()
   %gg = getelementptr inbounds %NpcEvent* %event, i32 0, i32 48
   %ggval0 = load %GlobalObject** %gg
-  call void @"\01GlobalObject.Announce"(%GlobalObject* %ggval0, i8* getelementptr inbounds ([6 x i8]* @"\01S0.", i64 0, i64 0))
+  call void @GlobalObject.Announce(%GlobalObject* %ggval0, i8* getelementptr inbounds ([6 x i8]* @S0, i64 0, i64 0))
   ret void
 }
 

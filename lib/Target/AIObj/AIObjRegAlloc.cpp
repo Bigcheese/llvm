@@ -55,7 +55,7 @@ namespace {
           if (MII->getOpcode() == AIObj::STORE_TO_STACK_SLOT) {
             int64_t StackSlot = MII->getOperand(0).getImm();
             int64_t Uses = MII->getOperand(1).getImm();
-            if (canFoldToDup(MII + 1, StackSlot) && Uses == 1) {
+            if (canFoldToDup(MII + 1, StackSlot) && Uses < 3) {
               MII = MBBI->erase_instr(MII);
               MII = MBBI->erase_instr(MII); // Erase LOAD_FROM_STACK_SLOT
               MII = BuildMI(*MBBI, MII, MII->getDebugLoc(), TII.get(AIObj::PUSH_REG_SP));

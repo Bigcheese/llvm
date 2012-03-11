@@ -52,7 +52,7 @@ void AIObjInstPrinter::printInst(const MCInst *MI, raw_ostream &O,
     O << "\tfunc_call " << cast<MCSymbolRefExpr>(MI->getOperand(0).getExpr())->getSymbol().getName();
     break;
   case AIObj::FUNCTION_CALL:
-    O << "\tfunc_call " << cast<MCSymbolRefExpr>(MI->getOperand(0).getExpr())->getSymbol().getName();
+    O << "\tfunc_call " << cast<MCSymbolRefExpr>(MI->getOperand(1).getExpr())->getSymbol().getName();
   }
   printAnnotation(O, Annot);
 }
