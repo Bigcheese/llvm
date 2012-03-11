@@ -69,8 +69,6 @@ AIObjTargetLowering::LowerFormalArguments
   if (isVarArg) llvm_unreachable("AIObj does not support varargs");
 
   MachineFunction &MF = DAG.getMachineFunction();
-  const AIObjSubtarget &ST = getTargetMachine().getSubtarget<AIObjSubtarget>();
-  AIObjMachineFunctionInfo *MFI = MF.getInfo<AIObjMachineFunctionInfo>();
 
   for (unsigned i = 0, e = Ins.size(); i != e; ++i) {
     InVals.push_back(
