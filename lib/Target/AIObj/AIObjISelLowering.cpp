@@ -116,7 +116,7 @@ AIObjTargetLowering::LowerCall( SDValue Chain
   SDVTList VTs = DAG.getVTList(ValueVTs.data(), ValueVTs.size());
 
   if (Ins.size() == 1) {
-    SDValue &RetVal = DAG.getNode(AIOBJISD::FUNCTION_CALL, dl, VTs, &Ops[0], Ops.size());
+    SDValue RetVal = DAG.getNode(AIOBJISD::FUNCTION_CALL, dl, VTs, &Ops[0], Ops.size());
     InVals.push_back(RetVal);
     return RetVal.getValue(ValueVTs.size() - 1);
   } else {
