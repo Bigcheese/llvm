@@ -65,13 +65,14 @@ public:
     if (UseCount > 1) {
       Sequence.push_back(
         newSUnit(
-          DAG->getMachineNode(
-              AIObj::STORE_TO_STACK_SLOT
+          DAG->getNode(
+              ISD::CopyToReg
             , SD.getDebugLoc()
             , MVT::Other
-            , DAG->getTargetConstant(CurrentStackSlot, MVT::i32)
-            , DAG->getTargetConstant(UseCount, MVT::i32)
-            )
+            , DAG->getEntryNode()
+            , DAG->getRegister(CurrentStackSlot, MVT::i64)
+            , SDValue(&SD, 0)
+            ).getNode()
         )
       );
       StackSlots[&SD] = CurrentStackSlot++;

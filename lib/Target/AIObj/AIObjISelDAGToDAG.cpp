@@ -54,6 +54,8 @@ public:
 
 private:
   SDNode *SelectBRCOND(SDNode *N);
+  SDNode *SelectCopyFromReg(SDNode *N);
+  SDNode *SelectCopyToReg(SDNode *N);
   SDNode *SelectTargetGlobalAddress(SDNode *N);
 };
 }  // end anonymous namespace
