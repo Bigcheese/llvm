@@ -1,4 +1,4 @@
-; Test linking of a bc file to an archive via llvm-ld. 
+; Test linking of a bc file to an archive via llvm-link.
 ; PR1434
 ; RUN: rm -f %t.bar.a %t.foo.a
 ; RUN: llvm-as %s -o %t.bar.bc
@@ -6,8 +6,8 @@
 ; RUN:   @baz = external global i32 } | llvm-as -o %t.foo.bc
 ; RUN: llvm-ar rcf %t.foo.a %t.foo.bc
 ; RUN: llvm-ar rcf %t.bar.a %t.bar.bc
-; RUN: llvm-ld -disable-opt %t.bar.bc %t.foo.a -o %t.bc 
-; RUN: llvm-ld -disable-opt %t.foo.bc %t.bar.a -o %t.bc
+; RUN: llvm-link %t.bar.bc %t.foo.a -o %t.bc
+; RUN: llvm-link %t.foo.bc %t.bar.a -o %t.bc
 declare i32* @foo(...)
 define i32* @bar() {
 	%ret = call i32* (...)* @foo( i32 123 )
