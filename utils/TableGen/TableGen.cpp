@@ -32,6 +32,7 @@ enum ActionType {
   GenAsmWriter,
   GenAsmMatcher,
   GenDisassembler,
+  GenOptionParser,
   GenPseudoLowering,
   GenCallingConv,
   GenDAGISel,
@@ -62,6 +63,8 @@ namespace {
                                "Generate assembly writer"),
                     clEnumValN(GenDisassembler, "gen-disassembler",
                                "Generate disassembler"),
+                    clEnumValN(GenOptionParser, "gen-option",
+                               "Generate option parser"),
                     clEnumValN(GenPseudoLowering, "gen-pseudo-lowering",
                                "Generate pseudo instruction lowering"),
                     clEnumValN(GenAsmMatcher, "gen-asm-matcher",
@@ -117,6 +120,9 @@ namespace {
         break;
       case GenDisassembler:
         EmitDisassembler(Records, OS);
+        break;
+      case GenOptionParser:
+        EmitOptionParser(Records, OS);
         break;
       case GenPseudoLowering:
         EmitPseudoLowering(Records, OS);
