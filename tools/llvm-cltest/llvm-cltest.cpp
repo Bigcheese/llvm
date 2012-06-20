@@ -8,6 +8,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "llvm/ADT/DenseMap.h"
+#include "llvm/ADT/STLExtras.h"
 #include "llvm/Support/Allocator.h"
 #include "llvm/Support/ManagedStatic.h"
 #include "llvm/Support/PrettyStackTrace.h"
@@ -21,8 +22,10 @@ using namespace llvm;
 
 namespace {
 struct ToolInfo;
+class Argument;
+class CommandLineParser;
 
-typedef bool ParseFunc(StringRef FlagValue, std::vector<std::string> &Values);
+typedef bool ParseFunc(CommandLineParser&, StringRef, Argument&);
 
 struct OptionInfo {
   unsigned int Kind : 16;
@@ -34,14 +37,16 @@ struct OptionInfo {
   const char *RenderString;
   const OptionInfo *Alias;
   const ToolInfo *Tool;
-  // const ParseFunc *Parser;
+  const ParseFunc *Parser;
 
-  bool matches(StringRef Arg) const {
+  std::pair<bool, StringRef> matches(StringRef Arg) const {
     for (const char * const *Pre = Prefixes; *Pre != 0; ++Pre) {
-      if (Arg.startswith(std::string(*Pre) + Name))
-        return true;
+      std::string Prefix(*Pre);
+      Prefix += Name;
+      if (Arg.startswith(Prefix))
+        return std::make_pair(true, Arg.substr(Prefix.size()));
     }
-    return false;
+    return std::make_pair(false, "");
   }
 };
 
@@ -60,13 +65,16 @@ struct ToolInfo {
     return false;
   }
 
-  const OptionInfo *findOption(StringRef Arg) const {
+  std::pair<const OptionInfo *, StringRef> findOption(StringRef Arg) const {
     // TODO: Convert this to a std::lower_bound search.
     const OptionInfo *Winner = 0;
+    StringRef Remaining;
     for (const OptionInfo *OI = Options; OI->RenderString != 0; ++OI) {
-      if (OI->matches(Arg)) {
+      std::pair<bool, StringRef> Match = OI->matches(Arg);
+      if (Match.first) {
         if (!Winner) {
           Winner = OI;
+          Remaining = Match.second;
           continue;
         }
         if (OI->Priority > Winner->Priority) {
@@ -74,7 +82,7 @@ struct ToolInfo {
         }
       }
     }
-    return Winner;
+    return std::make_pair(Winner, Remaining);
   }
 
   const OptionInfo *findNearest(StringRef Arg) const {
@@ -92,35 +100,6 @@ struct ToolInfo {
     return Winner;
   }
 };
-
-const uint16_t option_input = 0;
-
-enum LLDOptionKind {
-  lld_entry,
-  lld_entry_single
-};
-
-extern const ToolInfo LLDToolInfo;
-
-const char * const LLDEntryMeta[] = {"entry", 0};
-const char * const LLDMultiOnly[] = {"--", 0};
-const char * const LLDMulti[] = {"-", "--", 0};
-const char * const LLDSingle[] = {"-", 0};
-
-bool parseJoinedOrSep(StringRef FlagValue, std::vector<std::string> &Values) {
-  return false;
-}
-
-const OptionInfo Ops[] = {
-  {lld_entry, 0, true, LLDMultiOnly, "entry", LLDEntryMeta, "--entry=$v1", 0, &LLDToolInfo},
-  {lld_entry_single, 0, true, LLDSingle, "e", LLDEntryMeta, "-e $v1", 0, &LLDToolInfo},
-  {0}
-};
-
-const char * const LLDJoiners[] = {"=", 0};
-
-const ToolInfo LLDToolInfo = {LLDMulti, LLDJoiners, "-", "=", Ops};
-} // end namespace
 
 /// Argument represents a specific instance of an option parsed from the command
 /// line.
@@ -168,11 +147,15 @@ public:
         continue;
       }
       // This argument has a valid prefix, so lets try to parse it.
-      const OptionInfo *OI = Tool->findOption(*CurArg);
+      const OptionInfo *OI;
+      StringRef Val;
+      llvm::tie(OI, Val) = Tool->findOption(*CurArg);
       if (OI) {
         Argument *A = new (ArgListAlloc.Allocate<Argument>()) Argument(OI);
-        // TODO: Parse arg values. (This is where CurArg can be modified).
-        ArgList.push_back(A);
+        if (OI->Parser(*this, Val, *A))
+          ArgList.push_back(A);
+        else
+          errs() << "Failed to parse " << *CurArg << "\n";
         continue;
       }
       // It looks like an option, but it's not one we know about. Try to get
@@ -186,6 +169,9 @@ public:
     }
   }
 
+  CArg peekNextArg() const { return CurArg + 1; }
+  CArg getNextArg() { return ++CurArg; }
+
   const ArgumentList &getArgList() const { return ArgList; }
 
 private:
@@ -196,6 +182,59 @@ private:
   ArgumentList ArgList;
   BumpPtrAllocator ArgListAlloc;
 };
+
+const uint16_t option_input = 0;
+
+enum LLDOptionKind {
+  lld_entry,
+  lld_entry_single
+};
+
+extern const ToolInfo LLDToolInfo;
+
+const char * const LLDEntryMeta[] = {"entry", 0};
+const char * const LLDMultiOnly[] = {"--", 0};
+const char * const LLDMulti[] = {"-", "--", 0};
+const char * const LLDSingle[] = {"-", 0};
+
+bool parseNullJoined( CommandLineParser &P
+                    , StringRef ArgVal
+                    , Argument &A) {
+  if (ArgVal.empty())
+    return false;
+  A.setValue(0, ArgVal);
+  return true;
+}
+
+bool parseEqualJoinedOrSeparate( CommandLineParser &P
+                               , StringRef ArgVal
+                               , Argument &A) {
+  if (!ArgVal.empty()) {
+    // Joined by = value.
+    if (ArgVal[0] != '=')
+      return false;
+    A.setValue(0, ArgVal.substr(1));
+  } else {
+    CommandLineParser::CArg Next = P.peekNextArg();
+    if (!*Next)
+      return false;
+    A.setValue(0, *Next);
+    P.getNextArg();
+  }
+
+  return true;
+}
+
+const OptionInfo Ops[] = {
+  {lld_entry, 0, true, LLDMultiOnly, "entry", LLDEntryMeta, "--entry=$v1", 0, &LLDToolInfo, parseEqualJoinedOrSeparate},
+  {lld_entry_single, 0, true, LLDSingle, "e", LLDEntryMeta, "-e $v1", 0, &LLDToolInfo, parseNullJoined},
+  {0}
+};
+
+const char * const LLDJoiners[] = {"=", 0};
+
+const ToolInfo LLDToolInfo = {LLDMulti, LLDJoiners, "-", "=", Ops};
+} // end namespace
 
 int main(int argc, char **argv) {
   // Print a stack trace if we signal out.
