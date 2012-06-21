@@ -16,6 +16,7 @@
 #include "llvm/Support/raw_ostream.h"
 #include "llvm/Support/Signals.h"
 
+#include <map>
 #include <string>
 
 using namespace llvm;
@@ -107,23 +108,31 @@ class Argument {
   Argument() : Info(0) {}
 
 public:
+  typedef std::map<unsigned int, std::string> ValueMap;
+
   Argument(const OptionInfo * const OI) : Info(OI) {}
 
   void setValue(unsigned int Index, const std::string &Value) {
     Values[Index] = Value;
   }
 
+  void setValues(ValueMap VM) {
+    Values = VM;
+  }
+
   void dump() const {
     if (Info)
-      errs() << *Info->Prefixes << Info->Name << " ";
+      errs() << *Info->Prefixes << Info->Name << "=";
     for (auto V : Values) {
       errs() << V.second;
+      if (Info)
+        errs() << ",";
     }
   }
 
 private:
   const OptionInfo * const Info;
-  SmallDenseMap<unsigned int, std::string, 1> Values;
+  ValueMap Values;
 };
 
 typedef std::vector<Argument*> ArgumentList;
@@ -133,7 +142,7 @@ public:
   typedef const char * const * CArg;
 
   CommandLineParser(int argc, CArg argv, const ToolInfo *T)
-    : Argc(argc), Argv(argv), CurArg(Argv), Tool(T) {}
+    : CurArg(argv), Argc(argc), Argv(argv), Tool(T) {}
 
   void parse() {
     // Parse all args, but allow CurArg to be changed while parsing.
@@ -169,15 +178,13 @@ public:
     }
   }
 
-  CArg peekNextArg() const { return CurArg + 1; }
-  CArg getNextArg() { return ++CurArg; }
-
   const ArgumentList &getArgList() const { return ArgList; }
+
+  CArg CurArg;
 
 private:
   const int Argc;
   const CArg Argv;
-  CArg CurArg;
   const ToolInfo *Tool;
   ArgumentList ArgList;
   BumpPtrAllocator ArgListAlloc;
@@ -197,36 +204,135 @@ const char * const LLDMultiOnly[] = {"--", 0};
 const char * const LLDMulti[] = {"-", "--", 0};
 const char * const LLDSingle[] = {"-", 0};
 
-bool parseNullJoined( CommandLineParser &P
+struct ArgParseState {
+  CommandLineParser::CArg CurArg;
+  StringRef CurArgVal;
+  Argument::ValueMap Values;
+};
+
+typedef std::pair<bool, ArgParseState> ArgParseResult;
+
+template <typename PA, typename PB>
+struct OrParser {
+  OrParser(PA a, PB b) : A(a), B(b) {}
+
+  ArgParseResult operator() (const ArgParseState APS) {
+    ArgParseResult Res = A(APS);
+    if (Res.first)
+      return std::make_pair(true, Res.second);
+    Res = B(APS);
+    if (Res.first)
+      return std::make_pair(true, Res.second);
+    return std::make_pair(false, APS);
+  }
+
+  PA A;
+  PB B;
+};
+
+template <typename PA, typename PB>
+OrParser<PA, PB> parseOr(PA A, PB B) {
+  return OrParser<PA, PB>(A, B);
+}
+
+template <typename Par>
+struct JoinedParser {
+  JoinedParser(StringRef Join, Par P) : Joiner(Join), Parser(P) {}
+
+  ArgParseResult operator() (const ArgParseState APS) {
+    if (APS.CurArgVal.startswith(Joiner)) {
+      ArgParseState JoinerRemoved = APS;
+      JoinerRemoved.CurArgVal = APS.CurArgVal.substr(Joiner.size());
+      return Parser(JoinerRemoved);
+    }
+    return std::make_pair(false, APS);
+  }
+
+  StringRef Joiner;
+  Par Parser;
+};
+
+template <typename Par>
+JoinedParser<Par> parseJoined(StringRef Join, Par P) {
+  return JoinedParser<Par>(Join, P);
+}
+
+template <typename Par>
+struct SeperateParser {
+  SeperateParser(Par P) : Parser(P) {}
+
+  ArgParseResult operator() (const ArgParseState APS) {
+    // A seperated argument must not be followed by anything except a space.
+    if (!APS.CurArgVal.empty())
+      return std::make_pair(false, APS);
+
+    ArgParseState NextArg = APS;
+    ++NextArg.CurArg;
+
+    // Make sure the next arg isn't the end of the list.
+    if (!*NextArg.CurArg)
+      return std::make_pair(false, APS);
+
+    NextArg.CurArgVal = *NextArg.CurArg;
+    return Parser(NextArg);
+  }
+
+  Par Parser;
+};
+
+template <typename Par>
+SeperateParser<Par> parseSeperate(Par P) {
+  return SeperateParser<Par>(P);
+}
+
+struct StrParser {
+  StrParser(unsigned int ValIndex) : ValueIndex(ValIndex) {}
+
+  ArgParseResult operator() (const ArgParseState APS) {
+    ArgParseState Ret = APS;
+    Ret.Values[ValueIndex] = Ret.CurArgVal;
+    Ret.CurArgVal.substr(Ret.CurArgVal.size());
+    return std::make_pair(true, Ret);
+  }
+
+  unsigned int ValueIndex;
+};
+
+StrParser parseStr(unsigned int ValIndex) {
+  return StrParser(ValIndex);
+}
+
+bool parseNullJoined( CommandLineParser &CLP
                     , StringRef ArgVal
                     , Argument &A) {
-  if (ArgVal.empty())
+  ArgParseState APS;
+  APS.CurArg = CLP.CurArg;
+  APS.CurArgVal = ArgVal;
+  ArgParseResult APR = parseJoined("", parseStr(0))(APS);
+  if (!APR.first)
     return false;
-  A.setValue(0, ArgVal);
+  CLP.CurArg = APR.second.CurArg;
+  A.setValues(APR.second.Values);
   return true;
 }
 
-bool parseEqualJoinedOrSeparate( CommandLineParser &P
-                               , StringRef ArgVal
-                               , Argument &A) {
-  if (!ArgVal.empty()) {
-    // Joined by = value.
-    if (ArgVal[0] != '=')
-      return false;
-    A.setValue(0, ArgVal.substr(1));
-  } else {
-    CommandLineParser::CArg Next = P.peekNextArg();
-    if (!*Next)
-      return false;
-    A.setValue(0, *Next);
-    P.getNextArg();
-  }
-
+bool parseJoinedOrSeperate( CommandLineParser &CLP
+                          , StringRef ArgVal
+                          , Argument &A) {
+  ArgParseState APS;
+  APS.CurArg = CLP.CurArg;
+  APS.CurArgVal = ArgVal;
+  ArgParseResult APR = parseOr(parseJoined("=", parseStr(0)),
+                               parseSeperate(parseStr(0)))(APS);
+  if (!APR.first)
+    return false;
+  CLP.CurArg = APR.second.CurArg;
+  A.setValues(APR.second.Values);
   return true;
 }
 
 const OptionInfo Ops[] = {
-  {lld_entry, 0, true, LLDMultiOnly, "entry", LLDEntryMeta, "--entry=$v1", 0, &LLDToolInfo, parseEqualJoinedOrSeparate},
+  {lld_entry, 0, true, LLDMultiOnly, "entry", LLDEntryMeta, "--entry=$v1", 0, &LLDToolInfo, parseJoinedOrSeperate},
   {lld_entry_single, 0, true, LLDSingle, "e", LLDEntryMeta, "-e $v1", 0, &LLDToolInfo, parseNullJoined},
   {0}
 };
