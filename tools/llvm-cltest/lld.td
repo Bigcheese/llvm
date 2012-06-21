@@ -10,14 +10,14 @@ class LLDOption< list<string> prefixes
   : Option<prefixes, name, lld, strparse, render, rendermatch>;
 
 class LLDSingleLetterOption<string name>
-  : LLDOption<["-"], name, (joined "", (str:$v1)), "-"#name#"$v1", (str:$v1)> {
+  : LLDOption<["-"], name, (joined "", (str:$v0)), "-"#name#"$v0", (str:$v0)> {
   int Priority = 1;
 }
 
 class LLDMultipleLetterOption<string name>
-  : LLDOption<["-", "--"], name, (or (joined (str "="), (str:$v1),
-                                     (separate (str:$v1)))),
-              "--"#name#"=$v1", (str:$v1)>;
+  : LLDOption<["-", "--"], name, (or (joined (str "="), (str:$v0),
+                                     (separate (str:$v0)))),
+              "--"#name#"=$v0", (str:$v0)>;
 
 def lld_entry : LLDMultipleLetterOption<"entry">, MetaVars<["entry"]>;
 def lld_entry_single : LLDSingleLetterOption<"e">, MetaVars<["entry"]>,

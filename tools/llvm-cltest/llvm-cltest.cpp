@@ -36,6 +36,8 @@ struct OptionInfo {
   const char *Name;
   const char * const *MetaVars;
   const char *RenderString;
+  unsigned int RenderValueIndicesCount;
+  const unsigned int *RenderValueIndices;
   const OptionInfo *Alias;
   const ToolInfo *Tool;
   const ParseFunc *Parser;
@@ -121,12 +123,28 @@ public:
   }
 
   void dump() const {
-    if (Info)
-      errs() << *Info->Prefixes << Info->Name << "=";
-    for (auto V : Values) {
-      errs() << V.second;
-      if (Info)
-        errs() << ",";
+    if (!Info) {
+      errs() << Values.find(0)->second;
+      return;
+    }
+    StringRef RenderString(Info->RenderString);
+    while (true) {
+      StringRef::size_type Loc = RenderString.find_first_of('%');
+      if (Loc == StringRef::npos) {
+        errs() << RenderString;
+        break;
+      }
+      errs() << RenderString.substr(0, Loc);
+      if (Loc + 1 == RenderString.size())
+        break;
+      if (RenderString[Loc + 1] == '%')
+        errs() << '%';
+      else {
+        unsigned int Index = 0;
+        RenderString.substr(Loc + 1, 1).getAsInteger(10, Index);
+        errs() << Values.find(Index)->second;
+      }
+      RenderString = RenderString.substr(Loc + 2);
     }
   }
 
@@ -331,9 +349,11 @@ bool parseJoinedOrSeperate( CommandLineParser &CLP
   return true;
 }
 
+const unsigned int LLDRender1[] = {0};
+
 const OptionInfo Ops[] = {
-  {lld_entry, 0, true, LLDMultiOnly, "entry", LLDEntryMeta, "--entry=$v1", 0, &LLDToolInfo, parseJoinedOrSeperate},
-  {lld_entry_single, 0, true, LLDSingle, "e", LLDEntryMeta, "-e $v1", 0, &LLDToolInfo, parseNullJoined},
+  {lld_entry, 0, true, LLDMultiOnly, "entry", LLDEntryMeta, "--entry=%0", 1, LLDRender1, 0, &LLDToolInfo, parseJoinedOrSeperate},
+  {lld_entry_single, 0, true, LLDSingle, "e", LLDEntryMeta, "-e %0", 1, LLDRender1, 0, &LLDToolInfo, parseNullJoined},
   {0}
 };
 
