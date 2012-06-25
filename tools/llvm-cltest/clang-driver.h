@@ -1,4 +1,4 @@
-//===-- lld.h Option parser for lld ---------------------------------------===//
+//===-- clang-driver.h Option parser for the clang driver -----------------===//
 //
 //                     The LLVM Compiler Infrastructure
 //
@@ -7,27 +7,22 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef LLVM_OPTION_LLD_H
-#define LLVM_OPTION_LLD_H
+#ifndef LLVM_OPTION_CLANG_DRIVER_H
+#define LLVM_OPTION_CLANG_DRIVER_H
 
 #include "Option.h"
 
 namespace llvm {
 namespace option {
 
-enum LLDOptionKind {
-  lld_entry,
-  lld_entry_single,
-  lld_library_single
+enum ClangDriverOptionKind {
+  clang_driver_library_single
 };
 
-// This is needed to determine which tool a given argument is from by allowing
-// the linker to assign unique ids.
-extern const ToolInfo LLDToolInfo;
+extern const ToolInfo ClangDriverToolInfo;
 
-struct LLDTool {
-  LLDTool(int Argc, const char * const *Argv);
-  LLDTool(ArgumentList AL);
+struct ClangDriverTool {
+  ClangDriverTool(int Argc, const char * const *Argv);
 
   ArgumentList getArgList() const { return CLP.getArgList(); };
 

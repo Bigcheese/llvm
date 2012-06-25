@@ -16,6 +16,7 @@
 #include "llvm/Support/raw_ostream.h"
 #include "llvm/Support/Signals.h"
 
+#include "clang-driver.h"
 #include "lld.h"
 
 #include <map>
@@ -30,7 +31,8 @@ int main(int argc, char **argv) {
   PrettyStackTraceProgram X(argc, argv);
   llvm_shutdown_obj Y;  // Call llvm_shutdown() on exit.
 
-  LLDTool lld(argc - 1, argv + 1);
+  ClangDriverTool clang(argc - 1, argv + 1);
+  LLDTool lld(clang.getArgList());
   for (auto arg :  lld.getArgList()) {
     arg->dump();
     errs() << " ";

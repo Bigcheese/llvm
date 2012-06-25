@@ -122,6 +122,8 @@ public:
     Values = VM;
   }
 
+  const ValueMap &getValues() { return Values; }
+
   void dump() const {
     if (!Info) {
       errs() << Values.find(0)->second;
@@ -148,8 +150,9 @@ public:
     }
   }
 
-private:
   const OptionInfo * const Info;
+
+private:
   ValueMap Values;
 };
 
@@ -167,13 +170,13 @@ public:
   const ArgumentList &getArgList() const { return ArgList; }
 
   CArg CurArg;
+  ArgumentList ArgList;
+  BumpPtrAllocator ArgListAlloc;
 
 private:
   const int Argc;
   const CArg Argv;
   const ToolInfo *Tool;
-  ArgumentList ArgList;
-  BumpPtrAllocator ArgListAlloc;
 };
 
 struct ArgParseState {
