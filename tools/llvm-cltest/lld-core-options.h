@@ -16,6 +16,12 @@ namespace llvm {
 namespace option {
 
 enum LLDCoreOptionKind {
+  lld_core_commons_search_archives,
+  lld_core_dead_strip,
+  lld_core_keep_globals,
+  lld_core_output,
+  lld_core_pass,
+  lld_core_undefines_are_errors
 };
 
 // This is needed to determine which tool a given argument is from by allowing
@@ -24,6 +30,7 @@ extern const ToolInfo LLDCoreToolInfo;
 
 struct LLDCoreTool {
   LLDCoreTool(int Argc, const char * const *Argv);
+  LLDCoreTool(const ArgumentList);
 
   ArgumentList getArgList() const { return CLP.getArgList(); };
 

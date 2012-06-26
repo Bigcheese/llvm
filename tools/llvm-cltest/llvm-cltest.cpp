@@ -27,6 +27,14 @@
 using namespace llvm;
 using namespace option;
 
+void dumpArgList(const ArgumentList &AL) {
+  for (auto A : AL) {
+    A->dump();
+    errs() << " ";
+  }
+  errs() << "\n";
+}
+
 int main(int argc, char **argv) {
   // Print a stack trace if we signal out.
   sys::PrintStackTraceOnErrorSignal();
@@ -34,10 +42,9 @@ int main(int argc, char **argv) {
   llvm_shutdown_obj Y;  // Call llvm_shutdown() on exit.
 
   ClangDriverTool clang(argc - 1, argv + 1);
+  dumpArgList(clang.getArgList());
   LinkTool link(clang.getArgList());
-  for (auto arg : link.getArgList()) {
-    arg->dump();
-    errs() << " ";
-  }
-  errs() << "\n";
+  dumpArgList(link.getArgList());
+  LLDCoreTool lld_core(link.getArgList());
+  dumpArgList(lld_core.getArgList());
 }
