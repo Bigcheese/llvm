@@ -8,6 +8,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "link-options.h"
+#include "clang-driver.h"
 
 using namespace llvm;
 using namespace option;
@@ -44,4 +45,37 @@ const ToolInfo llvm::option::LinkToolInfo = {LinkPrefix, LinkJoiners, "-", "=", 
 LinkTool::LinkTool(int Argc, const char * const *Argv)
   : CLP(Argc, Argv, &LinkToolInfo) {
   CLP.parse();
+}
+
+LinkTool::LinkTool(const ArgumentList AL) 
+  : CLP(0, 0, 0) {
+  for (auto &A : AL) {
+    if (!A->Info) {
+      // Render as input.
+      Argument *Arg = new (CLP.ArgListAlloc.Allocate<Argument>()) Argument(0);
+      Arg->setValues(A->getValues());
+      CLP.ArgList.push_back(Arg);
+      continue;
+    }
+    if (A->Info->Tool != &ClangDriverToolInfo)
+      continue;
+    if (A->Info->Kind == clang_driver_library_path_single) {
+      Argument *Arg = new (CLP.ArgListAlloc.Allocate<Argument>()) Argument(&Ops[link_libpath]);
+      Arg->setValues(A->getValues());
+      CLP.ArgList.push_back(Arg);
+    } else if (A->Info->Kind == clang_driver_library_single) {
+      // Render as input.
+      Argument *Arg = new (CLP.ArgListAlloc.Allocate<Argument>()) Argument(0);
+      std::string Val = A->getValues().find(0)->second;
+      StringRef V(Val);
+      if (!StringRef(Val).endswith(".lib"))
+        Val += ".lib";
+      Arg->setValue(0, llvm_move(Val));
+      CLP.ArgList.push_back(Arg);
+    } else if (A->Info->Kind == clang_driver_output_single) {
+      Argument *Arg = new (CLP.ArgListAlloc.Allocate<Argument>()) Argument(&Ops[link_out]);
+      Arg->setValues(A->getValues());
+      CLP.ArgList.push_back(Arg);
+    }
+  }
 }

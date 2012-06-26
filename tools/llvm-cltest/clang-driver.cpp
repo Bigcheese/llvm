@@ -15,16 +15,21 @@ using namespace option;
 // Everything in here gets tablegened.
 namespace {
 const char * const ClangDriverLibraryMeta[] = {"library", 0};
+const char * const ClangDriverPathMeta[] = {"libpath", 0};
+const char * const ClangDriverFilePathMeta[] = {"filepath", 0};
 const char * const ClangDriverSingle[] = {"-", 0};
 
-ArgParseResult parseNullJoined(const ArgParseState APS) {
-  return parseJoined("", parseStr(0))(APS);
+ArgParseResult parseNullJoinedOrSeparate(const ArgParseState APS) {
+  return parseOr(parseJoined("", parseStr(0)),
+                 parseSeperate(parseStr(0)))(APS);
 }
 
 const unsigned int ClangDriverRender1[] = {0};
 
 const OptionInfo Ops[] = {
-  {clang_driver_library_single, 1, true, ClangDriverSingle, "l", ClangDriverLibraryMeta, "-l%0", 1, ClangDriverRender1, 0, &ClangDriverToolInfo, parseNullJoined},
+  {clang_driver_library_path_single, 0, true, ClangDriverSingle, "L", ClangDriverPathMeta, "-L%0", 1, ClangDriverRender1, 0, &ClangDriverToolInfo, parseNullJoinedOrSeparate},
+  {clang_driver_library_single, 1, true, ClangDriverSingle, "l", ClangDriverLibraryMeta, "-l%0", 1, ClangDriverRender1, 0, &ClangDriverToolInfo, parseNullJoinedOrSeparate},
+  {clang_driver_output_single, 0, true, ClangDriverSingle, "o", ClangDriverFilePathMeta, "-o %0", 1, ClangDriverRender1, 0, &ClangDriverToolInfo, parseNullJoinedOrSeparate},
   {0}
 };
 

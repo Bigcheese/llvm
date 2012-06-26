@@ -213,6 +213,8 @@ struct JoinedParser {
   JoinedParser(StringRef Join, Par P) : Joiner(Join), Parser(P) {}
 
   ArgParseResult operator() (const ArgParseState APS) {
+    if (Joiner.empty() && APS.CurArgVal.empty())
+      return std::make_pair(false, APS);
     if (APS.CurArgVal.startswith(Joiner)) {
       ArgParseState JoinerRemoved = APS;
       JoinerRemoved.CurArgVal = APS.CurArgVal.substr(Joiner.size());

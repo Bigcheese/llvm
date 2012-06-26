@@ -28,6 +28,7 @@ extern const ToolInfo LinkToolInfo;
 
 struct LinkTool {
   LinkTool(int Argc, const char * const *Argv);
+  LinkTool(const ArgumentList);
 
   ArgumentList getArgList() const { return CLP.getArgList(); };
 

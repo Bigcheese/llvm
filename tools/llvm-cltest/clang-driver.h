@@ -16,7 +16,9 @@ namespace llvm {
 namespace option {
 
 enum ClangDriverOptionKind {
-  clang_driver_library_single
+  clang_driver_library_path_single,
+  clang_driver_library_single,
+  clang_driver_output_single
 };
 
 extern const ToolInfo ClangDriverToolInfo;

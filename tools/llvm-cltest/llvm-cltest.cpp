@@ -1,4 +1,4 @@
-//===-- llvm-nm.cpp - Symbol table dumping utility for llvm ---------------===//
+//===-- llvm-cltest.cpp - Command line test -------------------------------===//
 //
 //                     The LLVM Compiler Infrastructure
 //
@@ -17,7 +17,9 @@
 #include "llvm/Support/Signals.h"
 
 #include "clang-driver.h"
+#include "link-options.h"
 #include "lld.h"
+#include "lld-core-options.h"
 
 #include <map>
 #include <string>
@@ -32,8 +34,8 @@ int main(int argc, char **argv) {
   llvm_shutdown_obj Y;  // Call llvm_shutdown() on exit.
 
   ClangDriverTool clang(argc - 1, argv + 1);
-  LLDTool lld(clang.getArgList());
-  for (auto arg :  lld.getArgList()) {
+  LinkTool link(clang.getArgList());
+  for (auto arg : link.getArgList()) {
     arg->dump();
     errs() << " ";
   }
