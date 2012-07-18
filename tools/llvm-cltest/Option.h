@@ -51,6 +51,29 @@ struct OptionInfo {
     }
     return std::make_pair(false, "");
   }
+
+  template <class ValuesT>
+  void dump(const ValuesT &V, raw_ostream &OS = errs()) const {
+    StringRef RenderString(RenderString);
+    while (true) {
+      StringRef::size_type Loc = RenderString.find_first_of('%');
+      if (Loc == StringRef::npos) {
+        OS << RenderString;
+        break;
+      }
+      OS << RenderString.substr(0, Loc);
+      if (Loc + 1 == RenderString.size())
+        break;
+      if (RenderString[Loc + 1] == '%')
+        OS << '%';
+      else {
+        unsigned int Index = 0;
+        RenderString.substr(Loc + 1, 1).getAsInteger(10, Index);
+        OS << V[Index];
+      }
+      RenderString = RenderString.substr(Loc + 2);
+    }
+  }
 };
 
 struct ToolInfo {
@@ -102,6 +125,13 @@ struct ToolInfo {
     }
     return Winner;
   }
+
+  void help(raw_ostream &OS) const {
+    for (const OptionInfo *OI = Options; OI->RenderString != 0; ++OI) {
+      OI->dump(OI->MetaVars);
+      OS << "\n";
+    }
+  }
 };
 
 /// Argument represents a specific instance of an option parsed from the command
@@ -124,27 +154,27 @@ public:
 
   const ValueMap &getValues() { return Values; }
 
-  void dump() const {
+  void dump(raw_ostream &OS = errs()) const {
     if (!Info) {
-      errs() << Values.find(0)->second;
+      OS << Values.find(0)->second;
       return;
     }
     StringRef RenderString(Info->RenderString);
     while (true) {
       StringRef::size_type Loc = RenderString.find_first_of('%');
       if (Loc == StringRef::npos) {
-        errs() << RenderString;
+        OS << RenderString;
         break;
       }
-      errs() << RenderString.substr(0, Loc);
+      OS << RenderString.substr(0, Loc);
       if (Loc + 1 == RenderString.size())
         break;
       if (RenderString[Loc + 1] == '%')
-        errs() << '%';
+        OS << '%';
       else {
         unsigned int Index = 0;
         RenderString.substr(Loc + 1, 1).getAsInteger(10, Index);
-        errs() << Values.find(Index)->second;
+        OS << Values.find(Index)->second;
       }
       RenderString = RenderString.substr(Loc + 2);
     }

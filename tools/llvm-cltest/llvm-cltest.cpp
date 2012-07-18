@@ -41,6 +41,11 @@ int main(int argc, char **argv) {
   PrettyStackTraceProgram X(argc, argv);
   llvm_shutdown_obj Y;  // Call llvm_shutdown() on exit.
 
+  if (argc < 2) {
+    LLDCoreToolInfo.help(errs());
+    return 0;
+  }
+
   ClangDriverTool clang(argc - 1, argv + 1);
   dumpArgList(clang.getArgList());
   LinkTool link(clang.getArgList());
