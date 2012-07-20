@@ -33,8 +33,8 @@ static void SwapStruct(T &Value);
 template<typename T>
 static void ReadInMemoryStruct(const MachOObject &MOO,
                                StringRef Buffer, uint64_t Base,
-                               InMemoryStruct<T> &Res) {
-  typedef T struct_type;
+                               InMemoryStruct<const T> &Res) {
+  typedef const T struct_type;
   uint64_t Size = sizeof(struct_type);
 
   // Check that the buffer contains the expected data.
@@ -44,7 +44,7 @@ static void ReadInMemoryStruct(const MachOObject &MOO,
   }
 
   // Check whether we can return a direct pointer.
-  struct_type *Ptr = (struct_type *) (Buffer.data() + Base);
+  struct_type *Ptr = reinterpret_cast<struct_type *>(Buffer.data() + Base);
   if (!MOO.isSwappedEndian()) {
     Res = Ptr;
     return;
@@ -133,7 +133,7 @@ StringRef MachOObject::getData(size_t Offset, size_t Size) const {
   return Buffer->getBuffer().substr(Offset,Size);
 }
 
-void MachOObject::RegisterStringTable(macho::SymtabLoadCommand &SLC) {
+void MachOObject::RegisterStringTable(const macho::SymtabLoadCommand &SLC) {
   HasStringTable = true;
   StringTable = Buffer->getBuffer().substr(SLC.StringTableOffset,
                                            SLC.StringTableSize);
@@ -181,7 +181,7 @@ void SwapStruct(macho::SegmentLoadCommand &Value) {
   SwapValue(Value.Flags);
 }
 void MachOObject::ReadSegmentLoadCommand(const LoadCommandInfo &LCI,
-                         InMemoryStruct<macho::SegmentLoadCommand> &Res) const {
+                   InMemoryStruct<const macho::SegmentLoadCommand> &Res) const {
   ReadInMemoryStruct(*this, Buffer->getBuffer(), LCI.Offset, Res);
 }
 
@@ -199,7 +199,7 @@ void SwapStruct(macho::Segment64LoadCommand &Value) {
   SwapValue(Value.Flags);
 }
 void MachOObject::ReadSegment64LoadCommand(const LoadCommandInfo &LCI,
-                       InMemoryStruct<macho::Segment64LoadCommand> &Res) const {
+                 InMemoryStruct<const macho::Segment64LoadCommand> &Res) const {
   ReadInMemoryStruct(*this, Buffer->getBuffer(), LCI.Offset, Res);
 }
 
@@ -213,7 +213,7 @@ void SwapStruct(macho::SymtabLoadCommand &Value) {
   SwapValue(Value.StringTableSize);
 }
 void MachOObject::ReadSymtabLoadCommand(const LoadCommandInfo &LCI,
-                          InMemoryStruct<macho::SymtabLoadCommand> &Res) const {
+                    InMemoryStruct<const macho::SymtabLoadCommand> &Res) const {
   ReadInMemoryStruct(*this, Buffer->getBuffer(), LCI.Offset, Res);
 }
 
@@ -241,7 +241,7 @@ void SwapStruct(macho::DysymtabLoadCommand &Value) {
   SwapValue(Value.NumLocalRelocationTableEntries);
 }
 void MachOObject::ReadDysymtabLoadCommand(const LoadCommandInfo &LCI,
-                        InMemoryStruct<macho::DysymtabLoadCommand> &Res) const {
+                  InMemoryStruct<const macho::DysymtabLoadCommand> &Res) const {
   ReadInMemoryStruct(*this, Buffer->getBuffer(), LCI.Offset, Res);
 }
 
@@ -253,7 +253,7 @@ void SwapStruct(macho::LinkeditDataLoadCommand &Value) {
   SwapValue(Value.DataSize);
 }
 void MachOObject::ReadLinkeditDataLoadCommand(const LoadCommandInfo &LCI,
-                    InMemoryStruct<macho::LinkeditDataLoadCommand> &Res) const {
+              InMemoryStruct<const macho::LinkeditDataLoadCommand> &Res) const {
   ReadInMemoryStruct(*this, Buffer->getBuffer(), LCI.Offset, Res);
 }
 
@@ -264,7 +264,7 @@ void SwapStruct(macho::IndirectSymbolTableEntry &Value) {
 void
 MachOObject::ReadIndirectSymbolTableEntry(const macho::DysymtabLoadCommand &DLC,
                                           unsigned Index,
-                   InMemoryStruct<macho::IndirectSymbolTableEntry> &Res) const {
+             InMemoryStruct<const macho::IndirectSymbolTableEntry> &Res) const {
   uint64_t Offset = (DLC.IndirectSymbolTableOffset +
                      Index * sizeof(macho::IndirectSymbolTableEntry));
   ReadInMemoryStruct(*this, Buffer->getBuffer(), Offset, Res);
@@ -285,7 +285,7 @@ void SwapStruct(macho::Section &Value) {
 }
 void MachOObject::ReadSection(const LoadCommandInfo &LCI,
                               unsigned Index,
-                              InMemoryStruct<macho::Section> &Res) const {
+                              InMemoryStruct<const macho::Section> &Res) const {
   assert(LCI.Command.Type == macho::LCT_Segment &&
          "Unexpected load command info!");
   uint64_t Offset = (LCI.Offset + sizeof(macho::SegmentLoadCommand) +
@@ -308,7 +308,7 @@ void SwapStruct(macho::Section64 &Value) {
 }
 void MachOObject::ReadSection64(const LoadCommandInfo &LCI,
                                 unsigned Index,
-                                InMemoryStruct<macho::Section64> &Res) const {
+                            InMemoryStruct<const macho::Section64> &Res) const {
   assert(LCI.Command.Type == macho::LCT_Segment64 &&
          "Unexpected load command info!");
   uint64_t Offset = (LCI.Offset + sizeof(macho::Segment64LoadCommand) +
@@ -323,7 +323,7 @@ void SwapStruct(macho::RelocationEntry &Value) {
 }
 void MachOObject::ReadRelocationEntry(uint64_t RelocationTableOffset,
                                       unsigned Index,
-                            InMemoryStruct<macho::RelocationEntry> &Res) const {
+                      InMemoryStruct<const macho::RelocationEntry> &Res) const {
   uint64_t Offset = (RelocationTableOffset +
                      Index * sizeof(macho::RelocationEntry));
   ReadInMemoryStruct(*this, Buffer->getBuffer(), Offset, Res);
@@ -337,7 +337,7 @@ void SwapStruct(macho::SymbolTableEntry &Value) {
 }
 void MachOObject::ReadSymbolTableEntry(uint64_t SymbolTableOffset,
                                        unsigned Index,
-                           InMemoryStruct<macho::SymbolTableEntry> &Res) const {
+                     InMemoryStruct<const macho::SymbolTableEntry> &Res) const {
   uint64_t Offset = (SymbolTableOffset +
                      Index * sizeof(macho::SymbolTableEntry));
   ReadInMemoryStruct(*this, Buffer->getBuffer(), Offset, Res);
@@ -351,7 +351,7 @@ void SwapStruct(macho::Symbol64TableEntry &Value) {
 }
 void MachOObject::ReadSymbol64TableEntry(uint64_t SymbolTableOffset,
                                        unsigned Index,
-                         InMemoryStruct<macho::Symbol64TableEntry> &Res) const {
+                   InMemoryStruct<const macho::Symbol64TableEntry> &Res) const {
   uint64_t Offset = (SymbolTableOffset +
                      Index * sizeof(macho::Symbol64TableEntry));
   ReadInMemoryStruct(*this, Buffer->getBuffer(), Offset, Res);
@@ -365,7 +365,7 @@ void SwapStruct(macho::DataInCodeTableEntry &Value) {
 }
 void MachOObject::ReadDataInCodeTableEntry(uint64_t TableOffset,
                                            unsigned Index,
-                       InMemoryStruct<macho::DataInCodeTableEntry> &Res) const {
+                 InMemoryStruct<const macho::DataInCodeTableEntry> &Res) const {
   uint64_t Offset = (TableOffset +
                      Index * sizeof(macho::DataInCodeTableEntry));
   ReadInMemoryStruct(*this, Buffer->getBuffer(), Offset, Res);

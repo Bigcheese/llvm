@@ -119,7 +119,7 @@ public:
     return getStringTableData().slice(Index, End);
   }
 
-  void RegisterStringTable(macho::SymtabLoadCommand &SLC);
+  void RegisterStringTable(const macho::SymtabLoadCommand &SLC);
 
   /// @}
   /// @name Object Header Access
@@ -140,43 +140,43 @@ public:
 
   void ReadSegmentLoadCommand(
     const LoadCommandInfo &LCI,
-    InMemoryStruct<macho::SegmentLoadCommand> &Res) const;
+    InMemoryStruct<const macho::SegmentLoadCommand> &Res) const;
   void ReadSegment64LoadCommand(
     const LoadCommandInfo &LCI,
-    InMemoryStruct<macho::Segment64LoadCommand> &Res) const;
+    InMemoryStruct<const macho::Segment64LoadCommand> &Res) const;
   void ReadSymtabLoadCommand(
     const LoadCommandInfo &LCI,
-    InMemoryStruct<macho::SymtabLoadCommand> &Res) const;
+    InMemoryStruct<const macho::SymtabLoadCommand> &Res) const;
   void ReadDysymtabLoadCommand(
     const LoadCommandInfo &LCI,
-    InMemoryStruct<macho::DysymtabLoadCommand> &Res) const;
+    InMemoryStruct<const macho::DysymtabLoadCommand> &Res) const;
   void ReadLinkeditDataLoadCommand(
     const LoadCommandInfo &LCI,
-    InMemoryStruct<macho::LinkeditDataLoadCommand> &Res) const;
+    InMemoryStruct<const macho::LinkeditDataLoadCommand> &Res) const;
   void ReadIndirectSymbolTableEntry(
     const macho::DysymtabLoadCommand &DLC,
     unsigned Index,
-    InMemoryStruct<macho::IndirectSymbolTableEntry> &Res) const;
+    InMemoryStruct<const macho::IndirectSymbolTableEntry> &Res) const;
   void ReadSection(
     const LoadCommandInfo &LCI,
     unsigned Index,
-    InMemoryStruct<macho::Section> &Res) const;
+    InMemoryStruct<const macho::Section> &Res) const;
   void ReadSection64(
     const LoadCommandInfo &LCI,
     unsigned Index,
-    InMemoryStruct<macho::Section64> &Res) const;
+    InMemoryStruct<const macho::Section64> &Res) const;
   void ReadRelocationEntry(
     uint64_t RelocationTableOffset, unsigned Index,
-    InMemoryStruct<macho::RelocationEntry> &Res) const;
+    InMemoryStruct<const macho::RelocationEntry> &Res) const;
   void ReadSymbolTableEntry(
     uint64_t SymbolTableOffset, unsigned Index,
-    InMemoryStruct<macho::SymbolTableEntry> &Res) const;
+    InMemoryStruct<const macho::SymbolTableEntry> &Res) const;
   void ReadSymbol64TableEntry(
     uint64_t SymbolTableOffset, unsigned Index,
-    InMemoryStruct<macho::Symbol64TableEntry> &Res) const;
+    InMemoryStruct<const macho::Symbol64TableEntry> &Res) const;
   void ReadDataInCodeTableEntry(
     uint64_t TableOffset, unsigned Index,
-    InMemoryStruct<macho::DataInCodeTableEntry> &Res) const;
+    InMemoryStruct<const macho::DataInCodeTableEntry> &Res) const;
   void ReadULEB128s(uint64_t Index, SmallVectorImpl<uint64_t> &Out) const;
 
   /// @}

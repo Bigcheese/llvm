@@ -111,19 +111,21 @@ private:
 
   void moveToNextSection(DataRefImpl &DRI) const;
   void getSymbolTableEntry(DataRefImpl DRI,
-                           InMemoryStruct<macho::SymbolTableEntry> &Res) const;
+                      InMemoryStruct<const macho::SymbolTableEntry> &Res) const;
   void getSymbol64TableEntry(DataRefImpl DRI,
-                          InMemoryStruct<macho::Symbol64TableEntry> &Res) const;
+                    InMemoryStruct<const macho::Symbol64TableEntry> &Res) const;
   void moveToNextSymbol(DataRefImpl &DRI) const;
-  void getSection(DataRefImpl DRI, InMemoryStruct<macho::Section> &Res) const;
+  void getSection(DataRefImpl DRI,
+                  InMemoryStruct<const macho::Section> &Res) const;
   void getSection64(DataRefImpl DRI,
-                    InMemoryStruct<macho::Section64> &Res) const;
+                    InMemoryStruct<const macho::Section64> &Res) const;
   void getRelocation(DataRefImpl Rel,
-                     InMemoryStruct<macho::RelocationEntry> &Res) const;
+                     InMemoryStruct<const macho::RelocationEntry> &Res) const;
   std::size_t getSectionIndex(DataRefImpl Sec) const;
 
-  void printRelocationTargetName(InMemoryStruct<macho::RelocationEntry>& RE,
-                                 raw_string_ostream &fmt) const;
+  void printRelocationTargetName(
+                               InMemoryStruct<const macho::RelocationEntry>& RE,
+                               raw_string_ostream &fmt) const;
 };
 
 }

@@ -10,6 +10,8 @@
 #ifndef LLVM_ADT_INMEMORYSTRUCT_H
 #define LLVM_ADT_INMEMORYSTRUCT_H
 
+#include "llvm/Support/type_traits.h"
+
 #include <cassert>
 
 namespace llvm {
@@ -34,7 +36,7 @@ class InMemoryStruct {
 
   /// \brief A temporary object which can be used as a target of the smart
   /// pointer.
-  value_type Contents;
+  typename llvm::remove_const<value_type>::type Contents;
 
 private:
 
