@@ -27,6 +27,11 @@
 using namespace llvm;
 using namespace option;
 
+struct Blah {
+  const char *Data;
+  unsigned int Length;
+};
+
 void dumpArgList(const ArgumentList &AL) {
   for (auto A : AL) {
     A->dump();
@@ -48,6 +53,17 @@ int main(int argc, char **argv) {
 
   ClangDriverTool clang(argc - 1, argv + 1);
   dumpArgList(clang.getArgList());
+
+  errs() << (hasArg(clang.getArgList(), clang_driver_output_single) ? "true" : "false") << "\n";
+
+  for (auto &Arg : clang.getArgList()) {
+    if (!Arg->isClaimed()) {
+      errs() << "Warning: Unused argument: ";
+      Arg->dump(errs());
+      errs() << "\n";
+    }
+  }
+
   LinkTool link(clang.getArgList());
   dumpArgList(link.getArgList());
   LLDCoreTool lld_core(link.getArgList());

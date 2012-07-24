@@ -26,6 +26,11 @@ enum LinkOptionKind {
 
 extern const ToolInfo LinkToolInfo;
 
+template <>
+inline const ToolInfo *getToolInfoFromEnum<LinkOptionKind>(LinkOptionKind) {
+  return &LinkToolInfo;
+}
+
 struct LinkTool {
   LinkTool(int Argc, const char * const *Argv);
   LinkTool(const ArgumentList);

@@ -28,6 +28,11 @@ enum LLDCoreOptionKind {
 // the linker to assign unique ids.
 extern const ToolInfo LLDCoreToolInfo;
 
+template <>
+inline const ToolInfo *getToolInfoFromEnum<LLDCoreOptionKind>(LLDCoreOptionKind) {
+  return &LLDCoreToolInfo;
+}
+
 struct LLDCoreTool {
   LLDCoreTool(int Argc, const char * const *Argv);
   LLDCoreTool(const ArgumentList);

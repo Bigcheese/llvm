@@ -25,6 +25,11 @@ enum LLDOptionKind {
 // the linker to assign unique ids.
 extern const ToolInfo LLDToolInfo;
 
+template <>
+inline const ToolInfo *getToolInfoFromEnum<LLDOptionKind>(LLDOptionKind) {
+  return &LLDToolInfo;
+}
+
 struct LLDTool {
   LLDTool(int Argc, const char * const *Argv);
   LLDTool(ArgumentList AL);

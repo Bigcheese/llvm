@@ -23,6 +23,12 @@ enum ClangDriverOptionKind {
 
 extern const ToolInfo ClangDriverToolInfo;
 
+template <>
+inline const ToolInfo *getToolInfoFromEnum<ClangDriverOptionKind>(
+                                                        ClangDriverOptionKind) {
+  return &ClangDriverToolInfo;
+}
+
 struct ClangDriverTool {
   ClangDriverTool(int Argc, const char * const *Argv);
 

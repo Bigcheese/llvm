@@ -40,7 +40,7 @@ struct OptionInfo {
   const unsigned int *RenderValueIndices;
   const OptionInfo *Alias;
   const ToolInfo *Tool;
-  const ParseFunc *Parser;
+  ParseFunc *Parser;
 
   std::pair<bool, StringRef> matches(StringRef Arg) const {
     for (const char * const *Pre = Prefixes; *Pre != 0; ++Pre) {
@@ -54,24 +54,24 @@ struct OptionInfo {
 
   template <class ValuesT>
   void dump(const ValuesT &V, raw_ostream &OS = errs()) const {
-    StringRef RenderString(RenderString);
+    StringRef RS(RenderString);
     while (true) {
-      StringRef::size_type Loc = RenderString.find_first_of('%');
+      StringRef::size_type Loc = RS.find_first_of('%');
       if (Loc == StringRef::npos) {
-        OS << RenderString;
+        OS << RS;
         break;
       }
-      OS << RenderString.substr(0, Loc);
-      if (Loc + 1 == RenderString.size())
+      OS << RS.substr(0, Loc);
+      if (Loc + 1 == RS.size())
         break;
-      if (RenderString[Loc + 1] == '%')
+      if (RS[Loc + 1] == '%')
         OS << '%';
       else {
         unsigned int Index = 0;
-        RenderString.substr(Loc + 1, 1).getAsInteger(10, Index);
+        RS.substr(Loc + 1, 1).getAsInteger(10, Index);
         OS << V[Index];
       }
-      RenderString = RenderString.substr(Loc + 2);
+      RS = RS.substr(Loc + 2);
     }
   }
 };
@@ -134,15 +134,20 @@ struct ToolInfo {
   }
 };
 
+/// This template must be specialized for each ToolInfo's set of option enums to
+/// return the ToolInfo associated with them.
+template <class EnumType>
+const ToolInfo *getToolInfoFromEnum(EnumType);
+
 /// Argument represents a specific instance of an option parsed from the command
 /// line.
 class Argument {
-  Argument() : Info(0) {}
+  Argument() : Info(0), Claimed(false) {}
 
 public:
   typedef std::map<unsigned int, std::string> ValueMap;
 
-  Argument(const OptionInfo * const OI) : Info(OI) {}
+  Argument(const OptionInfo * const OI) : Info(OI), Claimed(false) {}
 
   void setValue(unsigned int Index, const std::string &Value) {
     Values[Index] = Value;
@@ -180,13 +185,42 @@ public:
     }
   }
 
+  void claim() {
+    Claimed = true;
+  }
+
+  bool isClaimed() {
+    return Claimed;
+  }
+
   const OptionInfo * const Info;
 
 private:
   ValueMap Values;
+  bool Claimed;
 };
 
 typedef std::vector<Argument*> ArgumentList;
+
+template <class T>
+Argument *getLastArg(const ArgumentList &AL, T Opt) {
+  const ToolInfo *TI = getToolInfoFromEnum(Opt);
+
+  for (ArgumentList::const_reverse_iterator I = AL.rbegin(), E = AL.rend();
+                                            I != E; ++I) {
+    if ((*I)->Info && (*I)->Info->Kind == Opt && (*I)->Info->Tool == TI) {
+      (*I)->claim();
+      return *I;
+    }
+  }
+
+  return 0;
+}
+
+template <class T>
+bool hasArg(const ArgumentList &AL, T Opt) {
+  return getLastArg(AL, Opt) != 0;
+}
 
 class CommandLineParser {
 public:
