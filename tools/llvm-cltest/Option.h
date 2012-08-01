@@ -267,11 +267,12 @@ public:
 
   const ArgumentList &getArgList() const { return ArgList; }
 
-  CArg CurArg;
   ArgumentList ArgList;
   BumpPtrAllocator ArgListAlloc;
 
 private:
+  CArg CurArg;
+
   const int Argc;
   const CArg Argv;
   const ToolInfo *Tool;
@@ -283,6 +284,7 @@ struct ArgParseState {
   Argument::ValueMap Values;
 };
 
+/// Attempt to parse PA, if that fails, try PB.
 template <typename PA, typename PB>
 struct OrParser {
   OrParser(PA a, PB b) : A(a), B(b) {}
@@ -306,6 +308,7 @@ OrParser<PA, PB> parseOr(PA A, PB B) {
   return OrParser<PA, PB>(A, B);
 }
 
+/// Parse string joined by Join.
 template <typename Par>
 struct JoinedParser {
   JoinedParser(StringRef Join, Par P) : Joiner(Join), Parser(P) {}
@@ -330,6 +333,7 @@ JoinedParser<Par> parseJoined(StringRef Join, Par P) {
   return JoinedParser<Par>(Join, P);
 }
 
+/// Parse a value seperated in argc.
 template <typename Par>
 struct SeperateParser {
   SeperateParser(Par P) : Parser(P) {}
@@ -358,6 +362,7 @@ SeperateParser<Par> parseSeperate(Par P) {
   return SeperateParser<Par>(P);
 }
 
+/// Capture a string as a value.
 struct StrParser {
   StrParser(unsigned int ValIndex) : ValueIndex(ValIndex) {}
 
