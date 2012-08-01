@@ -27,16 +27,15 @@ ArgParseResult parseNullJoinedOrSeparate(const ArgParseState APS) {
 const unsigned int ClangDriverRender1[] = {0};
 
 const OptionInfo Ops[] = {
-  {clang_driver_library_path_single, 0, true, ClangDriverSingle, "L", ClangDriverPathMeta, "-L%0", 1, ClangDriverRender1, 0, &ClangDriverToolInfo, parseNullJoinedOrSeparate},
-  {clang_driver_library_single, 1, true, ClangDriverSingle, "l", ClangDriverLibraryMeta, "-l%0", 1, ClangDriverRender1, 0, &ClangDriverToolInfo, parseNullJoinedOrSeparate},
-  {clang_driver_output_single, 0, true, ClangDriverSingle, "o", ClangDriverFilePathMeta, "-o %0", 1, ClangDriverRender1, 0, &ClangDriverToolInfo, parseNullJoinedOrSeparate},
+  {clang_driver_library_path_single, 0, true, ClangDriverSingle, "L", ClangDriverPathMeta,     "-L%0",  0, &ClangDriverToolInfo, parseNullJoinedOrSeparate},
+  {clang_driver_library_single,      1, true, ClangDriverSingle, "l", ClangDriverLibraryMeta,  "-l%0",  0, &ClangDriverToolInfo, parseNullJoinedOrSeparate},
+  {clang_driver_output_single,       0, true, ClangDriverSingle, "o", ClangDriverFilePathMeta, "-o %0", 0, &ClangDriverToolInfo, parseNullJoinedOrSeparate},
   {0}
 };
 
-const char * const ClangDriverJoiners[] = {"=", 0};
 } // end namespace
 
-const ToolInfo llvm::option::ClangDriverToolInfo = {ClangDriverSingle, ClangDriverJoiners, "-", "=", Ops};
+const ToolInfo llvm::option::ClangDriverToolInfo = {ClangDriverSingle, "-", "=", Ops};
 
 ClangDriverTool::ClangDriverTool(int Argc, const char * const *Argv)
   : CLP(Argc, Argv, &ClangDriverToolInfo) {

@@ -25,22 +25,19 @@ ArgParseResult parseColonJoined(const ArgParseState APS) {
   return parseJoined(":", parseStr(0))(APS);
 }
 
-const unsigned int LinkRender1[] = {0};
-
-const OptionInfo Ops[] = {
-  {link_default_lib, 0, false, LinkPrefix, "defaultlib", LinkLibraryMeta, "-defaultlib:%0", 1, LinkRender1, 0, &LinkToolInfo, parseColonJoined},
-  {link_entry, 0, false, LinkPrefix, "entry", LinkEntryMeta, "-entry:%0", 1, LinkRender1, 0, &LinkToolInfo, parseColonJoined},
-  {link_libpath, 0, false, LinkPrefix, "libpath", LinkPathMeta, "-libpath:%0", 1, LinkRender1, 0, &LinkToolInfo, parseColonJoined},
-  {link_no_default_lib, 1, false, LinkPrefix, "nodefaultlib", LinkLibraryMeta, "-nodefaultlib:%0", 1, LinkRender1, 0, &LinkToolInfo, parseColonJoined},
-  {link_no_default_lib_flag, 0, false, LinkPrefix, "nodefaultlib", 0, "-nodefaultlib", 0, 0, 0, &LinkToolInfo, 0},
-  {link_out, 0, false, LinkPrefix, "out", LinkOutMeta, "-out:%0", 1, LinkRender1, 0, &LinkToolInfo, parseColonJoined},
+const OptionInfo             Ops[] = {
+  {link_default_lib,         0, false, LinkPrefix, "defaultlib",   LinkLibraryMeta, "-defaultlib:%0",   0, &LinkToolInfo, parseColonJoined},
+  {link_entry,               0, false, LinkPrefix, "entry",        LinkEntryMeta,   "-entry:%0",        0, &LinkToolInfo, parseColonJoined},
+  {link_libpath,             0, false, LinkPrefix, "libpath",      LinkPathMeta,    "-libpath:%0",      0, &LinkToolInfo, parseColonJoined},
+  {link_no_default_lib,      1, false, LinkPrefix, "nodefaultlib", LinkLibraryMeta, "-nodefaultlib:%0", 0, &LinkToolInfo, parseColonJoined},
+  {link_no_default_lib_flag, 0, false, LinkPrefix, "nodefaultlib", 0,               "-nodefaultlib",    0, &LinkToolInfo, 0},
+  {link_out,                 0, false, LinkPrefix, "out",          LinkOutMeta,     "-out:%0",          0, &LinkToolInfo, parseColonJoined},
   {0}
 };
 
-const char * const LinkJoiners[] = {":", 0};
 } // end namespace
 
-const ToolInfo llvm::option::LinkToolInfo = {LinkPrefix, LinkJoiners, "-", "=", Ops};
+const ToolInfo llvm::option::LinkToolInfo = {LinkPrefix, "-", "=", Ops};
 
 LinkTool::LinkTool(int Argc, const char * const *Argv)
   : CLP(Argc, Argv, &LinkToolInfo) {
@@ -66,8 +63,7 @@ LinkTool::LinkTool(const ArgumentList AL)
     } else if (A->Info->Kind == clang_driver_library_single) {
       // Render as input.
       Argument *Arg = new (CLP.ArgListAlloc.Allocate<Argument>()) Argument(0);
-      std::string Val = A->getValues().find(0)->second;
-      StringRef V(Val);
+      std::string Val = A->getValues()[0].str();
       if (!StringRef(Val).endswith(".lib"))
         Val += ".lib";
       Arg->setValue(0, llvm_move(Val));

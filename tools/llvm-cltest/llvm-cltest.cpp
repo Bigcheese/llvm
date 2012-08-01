@@ -27,11 +27,6 @@
 using namespace llvm;
 using namespace option;
 
-struct Blah {
-  const char *Data;
-  unsigned int Length;
-};
-
 void dumpArgList(const ArgumentList &AL) {
   for (auto A : AL) {
     A->dump();

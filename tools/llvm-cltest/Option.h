@@ -10,6 +10,7 @@
 #ifndef LLVM_OPTION_OPTION_H
 #define LLVM_OPTION_OPTION_H
 
+#include "llvm/ADT/SmallString.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Support/Allocator.h"
@@ -26,22 +27,45 @@ class CommandLineParser;
 struct ArgParseState;
 typedef std::pair<bool, ArgParseState> ArgParseResult;
 
+/// A ParseFunc function is used to parse a string into an Argument given the
+/// Option it represents. ArgParseReslt.first is false if parsing failed. true
+/// otherwise.
 typedef ArgParseResult ParseFunc(const ArgParseState);
 
+/// The OptionInfo class is a standard-layout class that represents a single
+/// Option for a given Tool. For each tool, an array of them is aggregate
+/// initalized from a TableGen file.
 struct OptionInfo {
+  /// Unique per Tool option kind. 
   unsigned int Kind : 16;
+  /// Priority when multiple OptionInfos have the same prefix. The one with the
+  /// highest priority is matched first.
   unsigned int Priority : 8;
+  /// Should Name be matched case sensitive.
   unsigned int IsCaseSensitive : 1;
+  /// A null terminated array of prefix strings to apply to name while matching.
   const char * const *Prefixes;
+  /// The name of the option without any pre or postfixes. This is used for typo
+  /// correction.
   const char *Name;
+  /// A null terminated array of strings that represent metavariable names.
+  /// These are used to display help text.
   const char * const *MetaVars;
+  /// Model of how to render this option. %<number> are replaced with Argument
+  /// values, or MetaVars values if no Argument values have been bound.
   const char *RenderString;
-  unsigned int RenderValueIndicesCount;
-  const unsigned int *RenderValueIndices;
+  /// The Option this Option aliases. May be null.
   const OptionInfo *Alias;
+  /// The Tool this option belongs to.
   const ToolInfo *Tool;
+  /// The ParseFunc to use to parse the values of this Option. Null if no
+  /// parsing needed.
   ParseFunc *Parser;
 
+  /// Check if \a Arg starts with any combination of Prefixes + Name.
+  ///
+  /// \returns A pair of did it match, and if true a StringRef of the exact part
+  ///   of \a Arg that matched.
   std::pair<bool, StringRef> matches(StringRef Arg) const {
     for (const char * const *Pre = Prefixes; *Pre != 0; ++Pre) {
       std::string Prefix(*Pre);
@@ -52,6 +76,9 @@ struct OptionInfo {
     return std::make_pair(false, "");
   }
 
+  /// Print RenderString to \a OS filling in values using \a V.
+  ///
+  /// \a V must be a container that supports {OS << V[unsigned]}.
   template <class ValuesT>
   void dump(const ValuesT &V, raw_ostream &OS = errs()) const {
     StringRef RS(RenderString);
@@ -76,13 +103,23 @@ struct OptionInfo {
   }
 };
 
+/// The ToolInfo class represents a single Tool. It is generated from a TableGen
+/// file for each Tool.
 struct ToolInfo {
+  /// The union of each OptionInfo::Prefixes in Options. This is used to
+  /// determine if a given string is a potential option or an input.
   const char * const *Prefixes;
-  const char * const *Joiners;
+  /// The union of all single characters from Prefixes. This is used to trim off
+  /// characters prior to typo correction.
   const char * PrefixTrim;
+  /// The union of each joiner character from each OptionInfo::ParseFunc in
+  /// Options. This is used to strip off values prior to typo correction.
   const char * JoinerTrim;
+  /// The list of all OptionInfos that belong to this Tool. The list must be
+  /// sorted by Name then Priority.
   const OptionInfo *Options;
 
+  /// Returns true if \a Arg starts with any string in Prefixes.
   bool hasPrefix(StringRef Arg) const {
     for (const char * const *i = Prefixes; *i != 0; ++i) {
       if (Arg.startswith(*i))
@@ -91,6 +128,9 @@ struct ToolInfo {
     return false;
   }
 
+  /// Given a string, find which OptionInfo in Options is matches it.
+  ///
+  /// \returns <nullptr, ""> if no match found. Otherwise <match, rest-of-Arg>.
   std::pair<const OptionInfo *, StringRef> findOption(StringRef Arg) const {
     // TODO: Convert this to a std::lower_bound search.
     const OptionInfo *Winner = 0;
@@ -111,6 +151,8 @@ struct ToolInfo {
     return std::make_pair(Winner, Remaining);
   }
 
+  /// Find the OptionInfo in Options that is the nearest match to \a Arg
+  /// ignoring prefixes and joiners.
   const OptionInfo *findNearest(StringRef Arg) const {
     const OptionInfo *Winner = 0;
     Arg = Arg.ltrim(PrefixTrim);
@@ -126,6 +168,7 @@ struct ToolInfo {
     return Winner;
   }
 
+  /// Dump help text to \a OS using OptionInfo::MetaVars as the value set.
   void help(raw_ostream &OS) const {
     for (const OptionInfo *OI = Options; OI->RenderString != 0; ++OI) {
       OI->dump(OI->MetaVars);
@@ -145,11 +188,12 @@ class Argument {
   Argument() : Info(0), Claimed(false) {}
 
 public:
-  typedef std::map<unsigned int, std::string> ValueMap;
+  typedef SmallVector<SmallString<8>, 1> ValueMap;
 
   Argument(const OptionInfo * const OI) : Info(OI), Claimed(false) {}
 
-  void setValue(unsigned int Index, const std::string &Value) {
+  void setValue(unsigned int Index, StringRef Value) {
+    Values.reserve(Index);
     Values[Index] = Value;
   }
 
@@ -161,28 +205,11 @@ public:
 
   void dump(raw_ostream &OS = errs()) const {
     if (!Info) {
-      OS << Values.find(0)->second;
+      assert(!Values.empty() && "Got input Argument with no Value!");
+      OS << Values[0];
       return;
     }
-    StringRef RenderString(Info->RenderString);
-    while (true) {
-      StringRef::size_type Loc = RenderString.find_first_of('%');
-      if (Loc == StringRef::npos) {
-        OS << RenderString;
-        break;
-      }
-      OS << RenderString.substr(0, Loc);
-      if (Loc + 1 == RenderString.size())
-        break;
-      if (RenderString[Loc + 1] == '%')
-        OS << '%';
-      else {
-        unsigned int Index = 0;
-        RenderString.substr(Loc + 1, 1).getAsInteger(10, Index);
-        OS << Values.find(Index)->second;
-      }
-      RenderString = RenderString.substr(Loc + 2);
-    }
+    Info->dump(Values, OS);
   }
 
   void claim() {
@@ -196,12 +223,16 @@ public:
   const OptionInfo * const Info;
 
 private:
+  /// The set of values.
   ValueMap Values;
+  /// Has this Argument been used.
   bool Claimed;
 };
 
+/// A list of Arguments. Each Argument is owned by the Tool that parsed it.
 typedef std::vector<Argument*> ArgumentList;
 
+/// Get the last Argument of kind \a Opt from \a AL and claim it.
 template <class T>
 Argument *getLastArg(const ArgumentList &AL, T Opt) {
   const ToolInfo *TI = getToolInfoFromEnum(Opt);
@@ -217,11 +248,14 @@ Argument *getLastArg(const ArgumentList &AL, T Opt) {
   return 0;
 }
 
+/// See if \a AL has \a Opt and claim it if so.
 template <class T>
 bool hasArg(const ArgumentList &AL, T Opt) {
   return getLastArg(AL, Opt) != 0;
 }
 
+/// The CommandLineParser class is used by a Tool to parse argc and argv using
+/// the provided ToolInfo. It owns the Arguments it creates.
 class CommandLineParser {
 public:
   typedef const char * const * CArg;

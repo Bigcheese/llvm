@@ -30,19 +30,16 @@ ArgParseResult parseJoinedOrSeperate(const ArgParseState APS) {
                  parseSeperate(parseStr(0)))(APS);
 }
 
-const unsigned int LLDRender1[] = {0};
-
 const OptionInfo Ops[] = {
-  {lld_entry, 0, true, LLDMultiOnly, "entry", LLDEntryMeta, "--entry=%0", 1, LLDRender1, 0, &LLDToolInfo, parseJoinedOrSeperate},
-  {lld_entry_single, 1, true, LLDSingle, "e", LLDEntryMeta, "-e%0", 1, LLDRender1, &Ops[lld_entry], &LLDToolInfo, parseNullJoined},
-  {lld_library_single, 1, true, LLDSingle, "l", LLDLibraryMeta, "-l%0", 1, LLDRender1, 0, &LLDToolInfo, parseNullJoined},
+  {lld_entry,          0, true, LLDMultiOnly, "entry", LLDEntryMeta,   "--entry=%0", 0,               &LLDToolInfo, parseJoinedOrSeperate},
+  {lld_entry_single,   1, true, LLDSingle,    "e",     LLDEntryMeta,   "-e%0",       &Ops[lld_entry], &LLDToolInfo, parseNullJoined},
+  {lld_library_single, 1, true, LLDSingle,    "l",     LLDLibraryMeta, "-l%0",       0,               &LLDToolInfo, parseNullJoined},
   {0}
 };
 
-const char * const LLDJoiners[] = {"=", 0};
 } // end namespace
 
-const ToolInfo llvm::option::LLDToolInfo = {LLDMulti, LLDJoiners, "-", "=", Ops};
+const ToolInfo llvm::option::LLDToolInfo = {LLDMulti, "-", "=", Ops};
 
 LLDTool::LLDTool(int Argc, const char * const *Argv)
   : CLP(Argc, Argv, &LLDToolInfo) {

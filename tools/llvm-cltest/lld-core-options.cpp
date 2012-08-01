@@ -23,22 +23,19 @@ ArgParseResult parseJoined(const ArgParseState APS) {
   return parseJoined("=", parseStr(0))(APS);
 }
 
-const unsigned int Render1[] = {0};
-
 const OptionInfo Ops[] = {
-  {lld_core_commons_search_archives, 0, true, Single, "commons-search-archives", 0,            "-commons-search-archives", 0, 0,       0, &LLDCoreToolInfo, 0},
-  {lld_core_dead_strip,              0, true, Single, "dead-strip",              0,            "-dead-strip",              0, 0,       0, &LLDCoreToolInfo, 0},
-  {lld_core_keep_globals,            0, true, Single, "keep-globals",            0,            "-keep-globals",            0, 0,       0, &LLDCoreToolInfo, 0},
-  {lld_core_output,                  0, true, Single, "output",                  FileNameMeta, "-output=%0",               1, Render1, 0, &LLDCoreToolInfo, parseJoined},
-  {lld_core_pass,                    0, true, Single, "pass",                    PassNameMeta, "-pass=%0",                 1, Render1, 0, &LLDCoreToolInfo, parseJoined},
-  {lld_core_undefines_are_errors,    0, true, Single, "undefines-are-errors",    0,            "-undefines-are-errors",    0, 0,       0, &LLDCoreToolInfo, 0},
+  {lld_core_commons_search_archives, 0, true, Single, "commons-search-archives", 0,            "-commons-search-archives", 0, &LLDCoreToolInfo, 0},
+  {lld_core_dead_strip,              0, true, Single, "dead-strip",              0,            "-dead-strip",              0, &LLDCoreToolInfo, 0},
+  {lld_core_keep_globals,            0, true, Single, "keep-globals",            0,            "-keep-globals",            0, &LLDCoreToolInfo, 0},
+  {lld_core_output,                  0, true, Single, "output",                  FileNameMeta, "-output=%0",               0, &LLDCoreToolInfo, parseJoined},
+  {lld_core_pass,                    0, true, Single, "pass",                    PassNameMeta, "-pass=%0",                 0, &LLDCoreToolInfo, parseJoined},
+  {lld_core_undefines_are_errors,    0, true, Single, "undefines-are-errors",    0,            "-undefines-are-errors",    0, &LLDCoreToolInfo, 0},
   {0}
 };
 
-const char * const Joiners[] = {"=", 0};
 } // end namespace
 
-const ToolInfo llvm::option::LLDCoreToolInfo = {Single, Joiners, "-", "=", Ops};
+const ToolInfo llvm::option::LLDCoreToolInfo = {Single, "-", "=", Ops};
 
 LLDCoreTool::LLDCoreTool(int Argc, const char * const *Argv)
   : CLP(Argc, Argv, &LLDCoreToolInfo) {
