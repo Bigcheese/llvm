@@ -16,12 +16,12 @@ namespace llvm {
 namespace option {
 
 enum LinkOptionKind {
-  link_default_lib,
-  link_entry,
-  link_libpath,
-  link_no_default_lib,
-  link_no_default_lib_flag,
-  link_out
+  link_foo,
+  link_bar,
+  link_biz,
+  link_baz,
+  link_ayep,
+  link_nope
 };
 
 extern const ToolInfo LinkToolInfo;

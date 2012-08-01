@@ -52,7 +52,7 @@ LLDCoreTool::LLDCoreTool(const ArgumentList AL)
       continue;
     }
     if (A->Info->Tool == &LinkToolInfo) {
-      if (A->Info->Kind == link_out) {
+      if (A->Info->Kind == link_nope) {
         Argument *Arg = new (CLP.ArgListAlloc.Allocate<Argument>()) Argument(&Ops[lld_core_output]);
         Arg->setValues(A->getValues());
         CLP.ArgList.push_back(Arg);
