@@ -18,6 +18,116 @@
 
 namespace llvm {
 namespace sys {
+/// Get the virtual memory page size
+///
+/// \returns The number of bytes in a virtual memory page.
+unsigned getPageSize();
+
+/// Get process memory usage.
+///
+/// This function will return the total amount of memory allocated by the
+/// process. This only counts the memory allocated via the malloc, calloc and
+/// realloc functions and includes any "free" holes in the allocated space.
+size_t getMallocUsage();
+
+/// This function will set \p user_time to the amount of CPU time spent in user
+/// (non-kernel) mode and \p sys_time to the amount of CPU time spent in system
+/// (kernel) mode.  If the operating system does not support collection of these
+/// metrics, a zero TimeValue will be for both values.
+void getTimeUsage(
+  TimeValue &Elapsed,
+    ///< Returns the TimeValue::now() giving current time
+  TimeValue &UserTime,
+    ///< Returns the current amount of user time for the process
+  TimeValue &SysTime
+    ///< Returns the current amount of system time for the process
+  );
+
+/// This function will return the process' current user id number. Not all
+/// operating systems support this feature. Where it is not supported, the
+/// function will return 65536 as the value.
+int getCurrentUserId();
+
+/// This function will return the process' current group id number. Not all
+/// operating systems support this feature. Where it is not supported, the
+/// function will return 65536 as the value.
+int getCurrentGroupId();
+
+/// Prevent core file generation.
+///
+/// This function makes the necessary calls to the operating system to prevent
+/// core files or any other kind of large memory dumps that can occur when a
+/// program fails.
+void preventCoreFiles();
+
+/// This function determines if the standard input is connected directly to a
+/// user's input (keyboard probably), rather than coming from a file or pipe.
+bool standardInIsUserInput();
+
+/// This function determines if the standard output is connected to a "tty" or
+/// "console" window. That is, the output would be displayed to the user rather
+/// than being put on a pipe or stored in a file.
+bool standardOutIsDisplayed();
+
+/// This function determines if the standard error is connected to a "tty" or
+/// "console" window. That is, the output would be displayed to the user rather
+/// than being put on a pipe or stored in a file.
+bool standardErrIsDisplayed();
+
+/// This function determines if the given file descriptor is connected to a
+/// "tty" or "console" window. That is, the output would be displayed to the
+/// user rather than being put on a pipe or stored in a file.
+bool fileDescriptorIsDisplayed(int FD);
+
+/// This function determines if the given file descriptor is displayd and
+/// supports colors.
+bool fileDescriptorHasColors(int fd);
+
+/// This function determines the number of columns in the window if standard
+/// output is connected to a "tty" or "console" window. If standard output is
+/// not connected to a tty or console, or if the number of columns cannot be
+/// determined, this routine returns zero.
+unsigned standardOutColumns();
+
+/// This function determines the number of columns in the window if standard
+/// error is connected to a "tty" or "console" window. If standard error is not
+/// connected to a tty or console, or if the number of columns cannot be
+/// determined, this routine returns zero.
+unsigned standardErrColumns();
+
+/// This function determines whether the terminal connected to standard output
+/// supports colors. If standard output is not connected to a terminal, this
+/// function returns false.
+bool standardOutHasColors();
+
+/// This function determines whether the terminal connected to standard error
+/// supports colors. If standard error is not connected to a terminal, this
+/// function returns false.
+bool standardErrHasColors();
+
+/// Whether changing colors requires the output to be flushed. This is needed on
+/// systems that don't support escape sequences for changing colors.
+bool colorNeedsFlush();
+
+/// This function returns the colorcode escape sequences. If ColorNeedsFlush()
+/// is true then this function will change the colors and return an empty escape
+/// sequence. In that case it is the responsibility of the client to flush the
+/// output stream prior to calling this function.
+const char *outputColor(char C, bool Bold, bool BG);
+
+/// Same as OutputColor, but only enables the bold attribute.
+const char *outputBold(bool BG);
+
+/// This function returns the escape sequence to reverse forground and
+/// background colors.
+const char *outputReverse();
+
+/// Resets the terminals colors, or returns an escape sequence to do so.
+const char *resetColor();
+
+/// Get the result of a process wide random number generator. The generator will
+/// be automatically seeded in non-deterministic fashion.
+unsigned getRandomNumber();
 
   /// This class provides an abstraction for getting information about the
   /// currently executing process.
