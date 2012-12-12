@@ -59,7 +59,6 @@ struct AlignOf {
 template <typename T>
 inline unsigned alignOf() { return AlignOf<T>::Alignment; }
 
-
 /// \brief Helper for building an aligned character array type.
 ///
 /// This template is used to explicitly build up a collection of aligned
@@ -74,60 +73,75 @@ template <size_t Alignment> struct AlignedCharArrayImpl;
 #ifndef _MSC_VER
 
 #if __has_feature(cxx_alignas)
-#define LLVM_ALIGNEDCHARARRAY_TEMPLATE_ALIGNMENT(x) \
-  template <> struct AlignedCharArrayImpl<x> { \
-    char alignas(x) aligned; \
-  }
+template<std::size_t Alignment, std::size_t Size>
+struct AlignedCharArray {
+  alignas(Alignment) char buffer[Size];
+};
+
 #elif defined(__GNUC__) || defined(__IBM_ATTRIBUTES)
-#define LLVM_ALIGNEDCHARARRAY_TEMPLATE_ALIGNMENT(x) \
-  template <> struct AlignedCharArrayImpl<x> { \
-    char aligned __attribute__((aligned(x))); \
-  }
+template<std::size_t Alignment, std::size_t Size>
+struct AlignedCharArray; {
+  __attribute__((aligned(Alignment))) char buffer[Size];
+};
+
 #else
 # error No supported align as directive.
 #endif
 
-LLVM_ALIGNEDCHARARRAY_TEMPLATE_ALIGNMENT(1);
-LLVM_ALIGNEDCHARARRAY_TEMPLATE_ALIGNMENT(2);
-LLVM_ALIGNEDCHARARRAY_TEMPLATE_ALIGNMENT(4);
-LLVM_ALIGNEDCHARARRAY_TEMPLATE_ALIGNMENT(8);
-LLVM_ALIGNEDCHARARRAY_TEMPLATE_ALIGNMENT(16);
-LLVM_ALIGNEDCHARARRAY_TEMPLATE_ALIGNMENT(32);
-LLVM_ALIGNEDCHARARRAY_TEMPLATE_ALIGNMENT(64);
-LLVM_ALIGNEDCHARARRAY_TEMPLATE_ALIGNMENT(128);
-LLVM_ALIGNEDCHARARRAY_TEMPLATE_ALIGNMENT(512);
-LLVM_ALIGNEDCHARARRAY_TEMPLATE_ALIGNMENT(1024);
-LLVM_ALIGNEDCHARARRAY_TEMPLATE_ALIGNMENT(2048);
-LLVM_ALIGNEDCHARARRAY_TEMPLATE_ALIGNMENT(4096);
-LLVM_ALIGNEDCHARARRAY_TEMPLATE_ALIGNMENT(8192);
-
-#undef LLVM_ALIGNEDCHARARRAY_TEMPLATE_ALIGNMENT
-
 #else // _MSC_VER
+
+/// \brief Create a type with an aligned char buffer.
+template<std::size_t Alignment, std::size_t Size>
+struct AlignedCharArray;
 
 // We provide special variations of this template for the most common
 // alignments because __declspec(align(...)) doesn't actually work when it is
 // a member of a by-value function argument in MSVC, even if the alignment
 // request is something reasonably like 8-byte or 16-byte.
-template <> struct AlignedCharArrayImpl<1> { char aligned; };
-template <> struct AlignedCharArrayImpl<2> { short aligned; };
-template <> struct AlignedCharArrayImpl<4> { int aligned; };
-template <> struct AlignedCharArrayImpl<8> { double aligned; };
+
+template<std::size_t Size>
+struct AlignedCharArray<1, Size> {
+  union {
+    char aligned;
+    __declspec(align(1)) char buffer[Size];
+  };
+};
+
+template<std::size_t Size>
+struct AlignedCharArray<2, Size> {
+  union {
+    short aligned;
+    __declspec(align(2)) char buffer[Size];
+  };
+};
+
+template<std::size_t Size>
+struct AlignedCharArray<4, Size> {
+  union {
+    int aligned;
+    __declspec(align(4)) char buffer[Size];
+  };
+};
+
+template<std::size_t Size>
+struct AlignedCharArray<8, Size> {
+  union {
+    double aligned;
+    __declspec(align(8)) char buffer[Size];
+  };
+};
 
 #define LLVM_ALIGNEDCHARARRAY_TEMPLATE_ALIGNMENT(x) \
-  template <> struct AlignedCharArrayImpl<x> { \
-    __declspec(align(x)) char aligned; \
-  }
+  template<std::size_t Size> \
+  struct AlignedCharArray<x, Size> { \
+    __declspec(align(x)) char buffer[Size]; \
+  };
+
 LLVM_ALIGNEDCHARARRAY_TEMPLATE_ALIGNMENT(16);
 LLVM_ALIGNEDCHARARRAY_TEMPLATE_ALIGNMENT(32);
 LLVM_ALIGNEDCHARARRAY_TEMPLATE_ALIGNMENT(64);
 LLVM_ALIGNEDCHARARRAY_TEMPLATE_ALIGNMENT(128);
-LLVM_ALIGNEDCHARARRAY_TEMPLATE_ALIGNMENT(512);
-LLVM_ALIGNEDCHARARRAY_TEMPLATE_ALIGNMENT(1024);
-LLVM_ALIGNEDCHARARRAY_TEMPLATE_ALIGNMENT(2048);
-LLVM_ALIGNEDCHARARRAY_TEMPLATE_ALIGNMENT(4096);
-LLVM_ALIGNEDCHARARRAY_TEMPLATE_ALIGNMENT(8192);
-// Any larger and MSVC complains.
+
 #undef LLVM_ALIGNEDCHARARRAY_TEMPLATE_ALIGNMENT
 
 #endif // _MSC_VER
@@ -163,7 +177,7 @@ private:
   // Tests seem to indicate that both Clang and GCC will properly register the
   // alignment of a struct containing an aligned member, and this alignment
   // should carry over to the character array in the union.
-  llvm::AlignedCharArrayImpl<AlignOf<AlignerImpl>::Alignment> nonce_member;
+  llvm::AlignedCharArray<AlignOf<AlignerImpl>::Alignment, 1> nonce_member;
 };
 
 } // end namespace llvm

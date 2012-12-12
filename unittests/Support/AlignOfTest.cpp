@@ -321,6 +321,14 @@ TEST(AlignOfTest, BasicAlignedArray) {
 #ifndef _MSC_VER
   EXPECT_EQ(sizeof(V8), sizeof(AlignedCharArrayUnion<V8>));
 #endif
+
+  EXPECT_EQ(4u, (alignOf<AlignedCharArray<4, 1> >()));
+
+  // Sadly there's no other way to get the alignment of the value of an
+  // expression.
+#if __has_feature(cxx_alignas)
+  EXPECT_EQ(4u, (alignof(AlignedCharArray<4, 1>().buffer)));
+#endif
 }
 
 }
