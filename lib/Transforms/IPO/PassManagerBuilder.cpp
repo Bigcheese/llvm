@@ -232,6 +232,8 @@ void PassManagerBuilder::populateModulePassManager(PassManagerBase &MPM) {
       MPM.add(createLoopUnrollPass());
   }
 
+  MPM.add(createLoadCombinePass());
+
   MPM.add(createAggressiveDCEPass());         // Delete dead instructions
   MPM.add(createCFGSimplificationPass()); // Merge & remove BBs
   MPM.add(createInstructionCombiningPass());  // Clean up after everything.
@@ -343,6 +345,8 @@ void PassManagerBuilder::populateLTOPassManager(PassManagerBase &PM,
 
   // More scalar chains could be vectorized due to more alias information
   PM.add(createSLPVectorizerPass()); // Vectorize parallel scalar chains.
+
+  PM.add(createLoadCombinePass());
 
   // Cleanup and simplify the code after the scalar optimizations.
   PM.add(createInstructionCombiningPass());
