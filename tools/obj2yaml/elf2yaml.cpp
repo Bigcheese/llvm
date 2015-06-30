@@ -114,13 +114,7 @@ ErrorOr<ELFYAML::Object *> ELFDumper<ELFT>::dump() {
   }
 
   // Dump symbols
-  bool IsFirstSym = true;
   for (auto SI = Obj.symbol_begin(), SE = Obj.symbol_end(); SI != SE; ++SI) {
-    if (IsFirstSym) {
-      IsFirstSym = false;
-      continue;
-    }
-
     ELFYAML::Symbol S;
     if (std::error_code EC = ELFDumper<ELFT>::dumpSymbol(SI, false, S))
       return EC;

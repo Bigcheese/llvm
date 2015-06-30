@@ -270,7 +270,9 @@ public:
   }
 
   const Elf_Sym *symbol_begin() const;
+  const Elf_Sym *symbol_begin_raw() const; //< Includes null symbol
   const Elf_Sym *symbol_end() const;
+
   Elf_Sym_Range symbols() const {
     return make_range(symbol_begin(), symbol_end());
   }
@@ -477,7 +479,7 @@ ELFFile<ELFT>::getSection(const Elf_Sym *symb) const {
 template <class ELFT>
 const typename ELFFile<ELFT>::Elf_Sym *
 ELFFile<ELFT>::getSymbol(uint32_t Index) const {
-  return &*(symbol_begin() + Index);
+  return &*(symbol_begin_raw() + Index);
 }
 
 template <class ELFT>
@@ -763,6 +765,13 @@ const typename ELFFile<ELFT>::Elf_Shdr *ELFFile<ELFT>::section_end() const {
 
 template <class ELFT>
 const typename ELFFile<ELFT>::Elf_Sym *ELFFile<ELFT>::symbol_begin() const {
+  if (!dot_symtab_sec)
+    return nullptr;
+  return symbol_begin_raw() + 1;
+}
+
+template <class ELFT>
+const typename ELFFile<ELFT>::Elf_Sym *ELFFile<ELFT>::symbol_begin_raw() const {
   if (!dot_symtab_sec)
     return nullptr;
   if (dot_symtab_sec->sh_entsize != sizeof(Elf_Sym))
