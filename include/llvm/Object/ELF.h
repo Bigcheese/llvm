@@ -263,18 +263,28 @@ public:
       Header->getDataEncoding() == ELF::ELFDATA2LSB;
   }
 
+  /// \brief Get the first section ignoring the null entry.
   const Elf_Shdr *section_begin() const;
+  /// \brief Get the first section including the null entry. Used for indexing.
+  const Elf_Shdr *section_begin_raw() const;
   const Elf_Shdr *section_end() const;
+  /// \brief Get a range of sections exluding the null entry.
   Elf_Shdr_Range sections() const {
     return make_range(section_begin(), section_end());
   }
 
+  /// \brief Get the first symbol ignoring the null entry.
   const Elf_Sym *symbol_begin() const;
-  const Elf_Sym *symbol_begin_raw() const; //< Includes null symbol
+  /// \brief Get the first symbol including the null entry. Used for indexing.
+  const Elf_Sym *symbol_begin_raw() const;
   const Elf_Sym *symbol_end() const;
-
+  /// \brief Get a range of symbols exluding the null entry.
   Elf_Sym_Range symbols() const {
     return make_range(symbol_begin(), symbol_end());
+  }
+  /// \brief Get a range of symbols including the null entry.
+  Elf_Sym_Range symbols_raw() const {
+    return make_range(symbol_begin_raw(), symbol_end());
   }
 
   Elf_Dyn_Iter dynamic_table_begin() const;
@@ -285,7 +295,15 @@ public:
     return make_range(dynamic_table_begin(), dynamic_table_end(NULLEnd));
   }
 
+  /// \brief Get the first dynamic symbol ignoring the null entry.
   const Elf_Sym *dynamic_symbol_begin() const {
+    if (!DynSymRegion.Addr)
+      return nullptr;
+    return dynamic_symbol_begin_raw() + 1;
+  }
+
+  /// \brief Get the first dynamic symbol including the null entry.
+  const Elf_Sym *dynamic_symbol_begin_raw() const {
     if (!DynSymRegion.Addr)
       return nullptr;
     if (DynSymRegion.EntSize != sizeof(Elf_Sym))
@@ -300,6 +318,7 @@ public:
         ((const char *)DynSymRegion.Addr + DynSymRegion.Size));
   }
 
+  /// \brief Get a range of dynamic symbols exluding the null entry.
   Elf_Sym_Range dynamic_symbols() const {
     return make_range(dynamic_symbol_begin(), dynamic_symbol_end());
   }
@@ -753,6 +772,12 @@ uint64_t ELFFile<ELFT>::getSymbolIndex(const Elf_Sym *Sym) const {
 
 template <class ELFT>
 const typename ELFFile<ELFT>::Elf_Shdr *ELFFile<ELFT>::section_begin() const {
+  return section_begin_raw() + 1;
+}
+
+template <class ELFT>
+const typename ELFFile<ELFT>::Elf_Shdr *
+ELFFile<ELFT>::section_begin_raw() const {
   if (Header->e_shentsize != sizeof(Elf_Shdr))
     report_fatal_error("Invalid section header size");
   return reinterpret_cast<const Elf_Shdr *>(base() + Header->e_shoff);
@@ -760,7 +785,7 @@ const typename ELFFile<ELFT>::Elf_Shdr *ELFFile<ELFT>::section_begin() const {
 
 template <class ELFT>
 const typename ELFFile<ELFT>::Elf_Shdr *ELFFile<ELFT>::section_end() const {
-  return section_begin() + getNumSections();
+  return section_begin_raw() + getNumSections();
 }
 
 template <class ELFT>

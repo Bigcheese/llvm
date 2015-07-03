@@ -776,7 +776,7 @@ void ELFDumper<ELFT>::printRelocation(const Elf_Shdr *Sec,
 template<class ELFT>
 void ELFDumper<ELFT>::printSymbols() {
   ListScope Group(W, "Symbols");
-  for (const typename ELFO::Elf_Sym &Sym : Obj->symbols())
+  for (const typename ELFO::Elf_Sym &Sym : Obj->symbols_raw())
     printSymbol(&Sym, false);
 }
 

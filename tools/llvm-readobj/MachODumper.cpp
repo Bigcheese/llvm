@@ -57,7 +57,6 @@ private:
 
 } // namespace
 
-
 namespace llvm {
 
 std::error_code createMachODumper(const object::ObjectFile *Obj,
@@ -293,7 +292,6 @@ static void getSection(const MachOObjectFile *Obj,
   Section.Reserved1   = Sect.reserved1;
   Section.Reserved2   = Sect.reserved2;
 }
-
 
 static void getSymbol(const MachOObjectFile *Obj,
                       DataRefImpl DRI,

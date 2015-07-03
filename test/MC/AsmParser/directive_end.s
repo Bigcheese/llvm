@@ -6,6 +6,6 @@
 its_a_tarp:
 	int $0x3
 
-# CHECK: Symbol {
+# CHECK: Symbols [
 # CHECK-NOT:   Name: its_a_tarp
 

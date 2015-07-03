@@ -597,7 +597,7 @@ template <class ELFT>
 relocation_iterator
 ELFObjectFile<ELFT>::section_rel_begin(DataRefImpl Sec) const {
   DataRefImpl RelData;
-  uintptr_t SHT = reinterpret_cast<uintptr_t>(EF.section_begin());
+  uintptr_t SHT = reinterpret_cast<uintptr_t>(EF.section_begin_raw());
   RelData.d.a = (Sec.p - SHT) / EF.getHeader()->e_shentsize;
   RelData.d.b = 0;
   return relocation_iterator(RelocationRef(RelData, this));
@@ -607,7 +607,7 @@ template <class ELFT>
 relocation_iterator
 ELFObjectFile<ELFT>::section_rel_end(DataRefImpl Sec) const {
   DataRefImpl RelData;
-  uintptr_t SHT = reinterpret_cast<uintptr_t>(EF.section_begin());
+  uintptr_t SHT = reinterpret_cast<uintptr_t>(EF.section_begin_raw());
   const Elf_Shdr *S = reinterpret_cast<const Elf_Shdr *>(Sec.p);
   RelData.d.a = (Sec.p - SHT) / EF.getHeader()->e_shentsize;
   if (S->sh_type != ELF::SHT_RELA && S->sh_type != ELF::SHT_REL)
