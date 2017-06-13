@@ -662,6 +662,8 @@ void PassManagerBuilder::populateModulePassManager(
     }
   }
 
+  MPM.add(createCFGProfilePass());
+
   if (MergeFunctions)
     MPM.add(createMergeFunctionsPass());
 

@@ -97,16 +97,48 @@ void TargetLoweringObjectFileELF::emitModuleMetadata(
   StringRef Section;
 
   GetObjCImageInfo(M, Version, Flags, Section);
-  if (Section.empty())
-    return;
+  if (!Section.empty()) {
+    auto &C = getContext();
+    auto *S = C.getELFSection(Section, ELF::SHT_PROGBITS, ELF::SHF_ALLOC);
+    Streamer.SwitchSection(S);
+    Streamer.EmitLabel(C.getOrCreateSymbol(StringRef("OBJC_IMAGE_INFO")));
+    Streamer.EmitIntValue(Version, 4);
+    Streamer.EmitIntValue(Flags, 4);
+    Streamer.AddBlankLine();
+  }
 
-  auto &C = getContext();
-  auto *S = C.getELFSection(Section, ELF::SHT_PROGBITS, ELF::SHF_ALLOC);
-  Streamer.SwitchSection(S);
-  Streamer.EmitLabel(C.getOrCreateSymbol(StringRef("OBJC_IMAGE_INFO")));
-  Streamer.EmitIntValue(Version, 4);
-  Streamer.EmitIntValue(Flags, 4);
-  Streamer.AddBlankLine();
+  SmallVector<Module::ModuleFlagEntry, 8> ModuleFlags;
+  M.getModuleFlagsMetadata(ModuleFlags);
+
+  MDNode *CFGProfile = nullptr;
+
+  for (const auto &MFE : ModuleFlags) {
+    StringRef Key = MFE.Key->getString();
+    if (Key == "CFG Profile") {
+      CFGProfile = cast<MDNode>(MFE.Val);
+      break;
+    }
+  }
+
+  if (!CFGProfile)
+    return;
+  MCSectionELF *Sec =
+      getContext().getELFSection(".note.llvm.callgraph", ELF::SHT_NOTE, 0);
+  Streamer.SwitchSection(Sec);
+  SmallString<256> Out;
+  for (const auto &Edge : CFGProfile->operands()) {
+    raw_svector_ostream O(Out);
+    MDNode *E = cast<MDNode>(Edge);
+    O << cast<MDString>(E->getOperand(0))->getString() << " "
+      << cast<MDString>(E->getOperand(1))->getString() << " "
+      << cast<ConstantAsMetadata>(E->getOperand(2))
+             ->getValue()
+             ->getUniqueInteger()
+             .getZExtValue()
+      << "\n";
+    Streamer.EmitBytes(O.str());
+    Out.clear();
+  }
 }
 
 MCSymbol *TargetLoweringObjectFileELF::getCFIPersonalitySymbol(
