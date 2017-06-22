@@ -281,6 +281,9 @@ public:
   void EmitWinEHHandler(const MCSymbol *Sym, bool Unwind, bool Except) override;
   void EmitWinEHHandlerData() override;
 
+  void emitCGProfileEntry(const MCSymbol *From, const MCSymbol *To,
+                          uint64_t Count) override;
+
   void EmitInstruction(const MCInst &Inst, const MCSubtargetInfo &STI,
                        bool PrintSchedInfo) override;
 
@@ -1504,6 +1507,16 @@ void MCAsmStreamer::EmitWinCFIEndProlog() {
   MCStreamer::EmitWinCFIEndProlog();
 
   OS << "\t.seh_endprologue";
+  EmitEOL();
+}
+
+void MCAsmStreamer::emitCGProfileEntry(const MCSymbol *From, const MCSymbol *To,
+                                       uint64_t Count) {
+  OS << "\t.cg_profile ";
+  From->print(OS, MAI);
+  OS << " ";
+  To->print(OS, MAI);
+  OS << " " << Count;
   EmitEOL();
 }
 

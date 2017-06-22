@@ -122,7 +122,7 @@ void TargetLoweringObjectFileELF::emitModuleMetadata(
 
   if (!CFGProfile)
     return;
-  MCSectionELF *Sec =
+  /*MCSectionELF *Sec =
       getContext().getELFSection(".note.llvm.callgraph", ELF::SHT_NOTE, 0);
   Streamer.SwitchSection(Sec);
   SmallString<256> Out;
@@ -138,6 +138,18 @@ void TargetLoweringObjectFileELF::emitModuleMetadata(
       << "\n";
     Streamer.EmitBytes(O.str());
     Out.clear();
+  }*/
+  for (const auto &Edge : CFGProfile->operands()) {
+    MDNode *E = cast<MDNode>(Edge);
+    const MCSymbol *From = Streamer.getContext().getOrCreateSymbol(
+        cast<MDString>(E->getOperand(0))->getString());
+    const MCSymbol *To = Streamer.getContext().getOrCreateSymbol(
+        cast<MDString>(E->getOperand(1))->getString());
+    uint64_t Count = cast<ConstantAsMetadata>(E->getOperand(2))
+                         ->getValue()
+                         ->getUniqueInteger()
+                         .getZExtValue();
+    Streamer.emitCGProfileEntry(From, To, Count);
   }
 }
 

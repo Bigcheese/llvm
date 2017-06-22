@@ -67,6 +67,9 @@ public:
 
   void EmitValueToAlignment(unsigned, int64_t, unsigned, unsigned) override;
 
+  void emitCGProfileEntry(const MCSymbol *From, const MCSymbol *To,
+                          uint64_t Count) override;
+
   void FinishImpl() override;
 
   void EmitBundleAlignMode(unsigned AlignPow2) override;

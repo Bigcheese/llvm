@@ -582,6 +582,10 @@ void MCStreamer::EmitWinEHHandlerData() {
     report_fatal_error("Chained unwind areas can't have handlers!");
 }
 
+void MCStreamer::emitCGProfileEntry(const MCSymbol *From, const MCSymbol *To,
+                                    uint64_t Count) {
+}
+
 static MCSection *getWinCFISection(MCContext &Context, unsigned *NextWinCFIID,
                                    MCSection *MainCFISec,
                                    const MCSection *TextSec) {

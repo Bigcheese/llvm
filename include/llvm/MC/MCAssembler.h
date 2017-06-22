@@ -391,6 +391,13 @@ public:
   const MCLOHContainer &getLOHContainer() const {
     return const_cast<MCAssembler *>(this)->getLOHContainer();
   }
+
+  struct CGProfileEntry {
+    const MCSymbol *From;
+    const MCSymbol *To;
+    uint64_t Count;
+  };
+  std::vector<CGProfileEntry> CGProfile;
   /// @}
   /// \name Backend Data Access
   /// @{

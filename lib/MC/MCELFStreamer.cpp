@@ -358,6 +358,11 @@ void MCELFStreamer::EmitValueToAlignment(unsigned ByteAlignment,
                                          ValueSize, MaxBytesToEmit);
 }
 
+void MCELFStreamer::emitCGProfileEntry(const MCSymbol *From, const MCSymbol *To,
+                                       uint64_t Count) {
+  getAssembler().CGProfile.push_back({From, To, Count});
+}
+
 void MCELFStreamer::EmitIdent(StringRef IdentString) {
   MCSection *Comment = getAssembler().getContext().getELFSection(
       ".comment", ELF::SHT_PROGBITS, ELF::SHF_MERGE | ELF::SHF_STRINGS, 1, "");

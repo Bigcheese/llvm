@@ -817,6 +817,9 @@ public:
   virtual void EmitWinEHHandler(const MCSymbol *Sym, bool Unwind, bool Except);
   virtual void EmitWinEHHandlerData();
 
+  virtual void emitCGProfileEntry(const MCSymbol *From, const MCSymbol *To,
+                                  uint64_t Count);
+
   /// Get the .pdata section used for the given section. Typically the given
   /// section is either the main .text section or some other COMDAT .text
   /// section, but it may be any section containing code.
