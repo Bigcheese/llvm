@@ -1281,6 +1281,13 @@ void ELFObjectWriter::writeObject(MCAssembler &Asm,
     }
   }
 
+  MCSectionELF *CGProfileSection = nullptr;
+  if (!Asm.CGProfile.empty()) {
+    CGProfileSection =
+      Ctx.getELFSection(".note.llvm.cgprofile", ELF::SHT_NOTE, 0, 16, "");
+    SectionIndexMap[CGProfileSection] = addToSectionTable(CGProfileSection);
+  }
+
   for (MCSectionELF *Group : Groups) {
     align(Group->getAlignment());
 
@@ -1315,11 +1322,7 @@ void ELFObjectWriter::writeObject(MCAssembler &Asm,
     SectionOffsets[RelSection] = std::make_pair(SecStart, SecEnd);
   }
 
-  MCSectionELF *CGProfileSection = nullptr;
-  if (!Asm.CGProfile.empty()) {
-    CGProfileSection =
-      Ctx.getELFSection(".note.llvm.cgprofile", ELF::SHT_NOTE, 0);
-    SectionIndexMap[CGProfileSection] = addToSectionTable(CGProfileSection);
+  if (CGProfileSection) {
     uint64_t SecStart = getStream().tell();
     for (const MCAssembler::CGProfileEntry &CGPE : Asm.CGProfile) {
       write32(CGPE.From->getIndex());
