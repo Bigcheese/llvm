@@ -40,6 +40,7 @@ template <class ELFT> struct Elf_Versym_Impl;
 template <class ELFT> struct Elf_Hash_Impl;
 template <class ELFT> struct Elf_GnuHash_Impl;
 template <class ELFT> struct Elf_Chdr_Impl;
+template <class ELFT> struct Elf_CGProfile_Impl;
 
 template <endianness E, bool Is64> struct ELFType {
 private:
@@ -66,6 +67,7 @@ public:
   using Hash = Elf_Hash_Impl<ELFType<E, Is64>>;
   using GnuHash = Elf_GnuHash_Impl<ELFType<E, Is64>>;
   using Chdr = Elf_Chdr_Impl<ELFType<E, Is64>>;
+  using CGProfile = Elf_CGProfile_Impl<ELFType<E, Is64>>;
   using DynRange = ArrayRef<Dyn>;
   using ShdrRange = ArrayRef<Shdr>;
   using SymRange = ArrayRef<Sym>;
@@ -588,6 +590,14 @@ struct Elf_Chdr_Impl<ELFType<TargetEndianness, true>> {
   Elf_Word ch_reserved;
   Elf_Xword ch_size;
   Elf_Xword ch_addralign;
+};
+
+template <class ELFT>
+struct Elf_CGProfile_Impl {
+  LLVM_ELF_IMPORT_TYPES_ELFT(ELFT)
+  Elf_Word cgp_from;
+  Elf_Word cgp_to;
+  Elf_Xword cgp_weight;
 };
 
 // MIPS .reginfo section
